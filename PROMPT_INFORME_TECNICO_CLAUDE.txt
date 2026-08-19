@@ -1,0 +1,550 @@
+====================================================================
+PROMPT LISTO PARA COPIAR Y PEGAR EN CLAUDE.AI (CLAUDE WEB)
+Objetivo: que Claude genere y entregue un archivo .docx (Word) con el
+informe técnico completo del sistema "INAMHI | Control de Activos".
+====================================================================
+
+INSTRUCCIONES DE USO (no forman parte del prompt, bórralas antes de
+pegar si quieres, no afecta el resultado):
+1. Ve a claude.ai, abre una conversación nueva.
+2. Copia TODO el texto que está debajo de la línea "PROMPT >>>" hasta
+   el final del archivo y pégalo como tu mensaje.
+3. Pide expresamente "genera el archivo .docx descargable" si Claude
+   responde solo con el contenido en el chat en vez de crear el archivo.
+4. Si el informe queda muy largo y Claude lo corta, respóndele "continúa"
+   y seguirá desde donde quedó.
+
+====================================================================
+PROMPT >>>
+====================================================================
+
+Actúa como un(a) analista técnico(a) de software senior encargado(a) de
+redactar la documentación técnica oficial de un sistema ya desarrollado,
+para entregarla a la Dirección de Tecnología del INAMHI (Instituto
+Nacional de Meteorología e Hidrología, Ecuador).
+
+Quiero que generes un **informe técnico completo, formal y profesional**,
+en **español**, y que lo entregues como **archivo Word (.docx) descargable**
+(usa tu herramienta de creación de documentos; no lo dejes solo como texto
+en el chat). Usa estilos de título/subtítulo reales (Título 1, Título 2,
+Título 3), una portada, tabla de contenido, tablas donde corresponda, y
+numeración de páginas. Extensión objetivo: entre 18 y 30 páginas.
+
+No tienes acceso al código fuente del proyecto, así que a continuación te
+entrego TODA la información técnica real y verificada del sistema —
+extraída de una auditoría de código completa que ya se realizó sobre el
+repositorio— para que redactes el informe con datos precisos, sin inventar
+funcionalidades que no existan ni omitir las que sí. Donde el informe
+requiera un diagrama (arquitectura, entidad-relación, flujo de estados),
+represéntalo como una tabla o un esquema en texto/ASCII prolijo dentro
+del documento (no hace falta imagen), explicado con claridad.
+
+--------------------------------------------------------------------
+1. FICHA DEL PROYECTO
+--------------------------------------------------------------------
+- Nombre del sistema: "INAMHI | Control de Activos"
+- Tipo: Sistema institucional de control de activos / inventario de bienes
+- Institución: INAMHI (Instituto Nacional de Meteorología e Hidrología),
+  Ecuador
+- Propósito: reemplazar el control de inventario de bienes (equipos,
+  mobiliario, activos fijos) que la institución llevaba en hojas de
+  cálculo dispersas, por un sistema web centralizado con flujo de
+  aprobación, trazabilidad de custodios, generación de actas legales en
+  PDF y auditoría completa de acciones.
+- Estado actual: sistema funcional en fase de pruebas ("sistema en
+  prueba" es el último commit), pendiente de despliegue en producción.
+- Idioma de la interfaz: español (Ecuador), con los nombres de columna
+  EXACTOS que usa la institución (con tildes y paréntesis, ej. "Código
+  del Bien", "(BLD) o (BCA)").
+
+--------------------------------------------------------------------
+2. STACK TECNOLÓGICO
+--------------------------------------------------------------------
+Backend:
+- Python 3.11+
+- Flask 3.x como framework web, organizado en Blueprints
+- Flask-SQLAlchemy 3.x como ORM
+- MySQL 8.x como motor de base de datos (charset utf8mb4, collation
+  utf8mb4_unicode_ci), driver PyMySQL
+- Flask-Bcrypt para hashing de contraseñas (12 rondas)
+- Flask-JWT-Extended para autenticación de la capa de API JSON (tokens
+  Bearer por cabecera, expiración de 8 horas, secreto propio distinto
+  al de las sesiones web)
+- Flask-WTF (CSRFProtect) para protección CSRF en todos los formularios
+  web; la API JSON está exenta de CSRF porque se autentica con JWT por
+  cabecera, no con cookies
+- Flask-Limiter para limitar intentos de fuerza bruta en login (10
+  peticiones por minuto por IP, tanto en el login web como en el login
+  de la API), con almacenamiento en memoria (documentado como
+  limitación a resolver si se despliega con múltiples workers/procesos)
+- Flask-CORS, aplicado únicamente al prefijo /api/*
+- pandas + openpyxl para lectura y escritura de archivos Excel (.xlsx/.xls)
+- reportlab para generación de documentos PDF (actas de custodia)
+- qrcode + Pillow para generar códigos QR de verificación embebidos en
+  los PDFs
+- python-dotenv para configuración por variables de entorno (.env)
+
+Frontend:
+- Renderizado en servidor con Jinja2 (sin framework de frontend ni paso
+  de build/compilación)
+- Bootstrap 5 y Bootstrap Icons, ambos vendorizados localmente en
+  app/static/vendor/ (no se dependen de un CDN externo, salvo la
+  tipografía Google Fonts "Inter")
+- JavaScript vanilla (sin jQuery, sin React/Vue) para: validaciones de
+  formulario, modales de Bootstrap, autocompletado de custodios vía
+  fetch(), previsualización de PDF en <iframe> desde blobs, sidebar
+  colapsable, autoajuste de campos de texto a su contenido
+
+Infraestructura/operación:
+- Respaldo de base de datos mediante mysqldump, ejecutado vía subprocess
+  desde Python, con purga automática de respaldos antiguos (conserva
+  los últimos 5)
+- Backend pensado para desplegarse como servicio único en Windows (no
+  distribuido), documentado explícitamente en comentarios del código
+
+--------------------------------------------------------------------
+3. ARQUITECTURA DE LA APLICACIÓN
+--------------------------------------------------------------------
+Patrón general: aplicación Flask modular por Blueprints, con dos capas de
+acceso completamente separadas pero que comparten el mismo modelo de
+datos y las mismas reglas de negocio:
+
+a) Capa "web" (app/web/): páginas HTML server-side, autenticadas por
+   sesión de cookie de Flask. Pensada para el uso humano normal del
+   sistema desde el navegador.
+b) Capa "api" (app/api/): API JSON REST bajo el prefijo /api/,
+   autenticada por JWT (cabecera Authorization: Bearer), pensada para
+   integraciones externas o un futuro cliente distinto (móvil, otro
+   frontend).
+
+Ambas capas reutilizan las mismas funciones de reglas de negocio y
+autorización (app/utils/permisos.py), evitando duplicar lógica crítica
+de seguridad — solo difieren en cómo identifican al usuario autenticado.
+
+Estructura de carpetas real del proyecto:
+
+```
+app/
+├── __init__.py         Factory create_app(): registra extensiones,
+│                        blueprints, exime la API de CSRF, inyecta
+│                        usuario_actual y el filtro Jinja hora_ec
+├── config.py            Configuración vía variables de entorno (.env),
+│                        con validación de variables obligatorias
+├── extensions.py        Instancias únicas: db, bcrypt, jwt, cors, csrf,
+│                        limiter (evita imports circulares)
+├── models/               Usuario, Inventario, InventarioPrevio, Acta,
+│                        BienHistorialCustodio, BitacoraAuditoria
+├── web/                  Blueprints HTML: auth, inventario, editar, tic,
+│                        previo, acta, auditoria, usuarios
+├── api/                  Blueprints JSON: auth, bienes, tic, usuarios
+│                        (+ decorators.py con guardas JWT propias)
+├── utils/                Lógica transversal (detalle en sección 5)
+├── templates/            Jinja2: base.html (shell con sidebar) + una
+│                        plantilla por página + _macros.html (macro
+│                        reutilizable para renderizar campos de
+│                        formulario según su tipo)
+└── static/               Bootstrap 5 y Bootstrap Icons vendorizados,
+                         imágenes institucionales (logos INAMHI)
+```
+
+Módulo app/utils/campos.py es la "fuente única de verdad" del proyecto:
+define los ~46 campos oficiales del bien de inventario (nombre de
+atributo Python, etiqueta oficial en español, a qué pestaña del
+formulario pertenece, tipo de dato, qué encabezados alternativos de
+Excel se aceptan como alias, y cuáles son obligatorios). Tanto los
+formularios web, como la API, como la importación/exportación de Excel,
+recorren esta misma lista en vez de tener nombres de columna
+duplicados y hardcodeados en varios sitios — decisión de diseño
+explícitamente documentada en el código para evitar inconsistencias.
+
+--------------------------------------------------------------------
+4. MODELO DE DATOS
+--------------------------------------------------------------------
+Base de datos MySQL con 6 tablas. Descríbelas en el informe con una
+tabla por cada una (columna, tipo, nulabilidad, notas), y agrega un
+apartado de relaciones explicando que varias tablas de auditoría/histórico
+NO tienen claves foráneas hacia inventario/usuarios A PROPÓSITO (decisión
+de diseño), para poder seguir existiendo aunque el bien o el usuario
+referenciado se elimine después.
+
+1) usuarios
+   - id (PK, INT UNSIGNED, autoincrement)
+   - username (VARCHAR 80, único, indexado)
+   - password_hash (VARCHAR 255, bcrypt)
+   - rol (VARCHAR 50, uno de: "Administrador", "Editor",
+     "Tecnico Levantamiento")
+   - nombre_completo, email, direccion (opcionales; dirección se usa
+     como firma en las actas de custodia consolidadas)
+   - activo (booleano)
+   - fecha_creacion (datetime)
+
+2) inventario (tabla principal, ~46 columnas oficiales con nombres EN
+   ESPAÑOL EXACTOS, incluyendo tildes y paréntesis, ej.:
+   "Código del Bien", "Código Anterior", "Identificador",
+   "Nro de Acta/ Nro de Matriz", "(BLD) o (BCA)", "Bien",
+   "Serie/ Identificación", "Modelo/ Características", "Marca/ Otros",
+   "Crítico", "Descripción", "Moneda", "Valor de Compra", "Recompra",
+   "Valor Contable", "Valor Residual", "Valor en Libros",
+   "Valor Depreciación Acumulada", "Cuenta Contable", "Depreciable",
+   "Vida Útil", "Fecha Última Depreciación", "Fecha Término
+   Depreciación", "Color", "Material", "Dimensiones", "Condición del
+   Bien", "Habilitado", "Estado Bien", "Comodato", "Item/ Renglón",
+   "Id Bodega", "Bodega", "Id Ubicación", "Ubicación de Bodega",
+   "Nro de Cédula/ RUC", "Custodio Actual", "Custodio Activo",
+   "Origen del Ingreso", "Tipo de Ingreso", "Nro de Compromiso",
+   "Estado del Acta", "Contabilizado del Acta", "Contabilizado del
+   Bien", "Fecha de Creación", "Fecha de Ingreso")
+   Además, columnas de control interno (no vienen del Excel):
+   - Usuario Registro, estado (Borrador/En Revisión/Observado/Aprobado),
+     observaciones_tic, fecha_revision_tic, revisado_por_tic
+   - eliminado, fecha_eliminacion, eliminado_por (BORRADO LÓGICO: nunca
+     se hace DELETE físico de un bien; se marca eliminado=1 y se
+     conserva para auditoría/histórico legal)
+   Índices: UNIQUE sobre "Código del Bien"; índices normales sobre
+   Bien, Estado Bien, Custodio Actual, Usuario Registro, estado,
+   eliminado; y un índice FULLTEXT (MySQL) sobre 7 columnas de texto
+   libre (Bien, Serie/Identificación, Modelo/Características,
+   Marca/Otros, Descripción, Custodio Actual, Ubicación de Bodega)
+   para la búsqueda de texto libre con buen rendimiento.
+
+3) inventario_previo (tabla de staging para cargas de Excel): mismas
+   ~46 columnas que inventario pero en snake_case (nombres de atributo
+   interno), más codigo_generado (si el sistema le asignó un código
+   provisional), codigo_bien único, observaciones_carga,
+   nombre_archivo_origen, fecha_carga, verificado, usuario_verificador.
+
+4) actas: registro inmutable de cada acta de custodia consolidada
+   emitida. id = número de acta correlativo (se usa el AUTO_INCREMENT
+   nativo para evitar condiciones de carrera). custodio,
+   usuario_elabora, elaborado_nombre, elaborado_direccion,
+   fecha_emision, total_bienes, total_valor, y bienes_snapshot (columna
+   JSON) que guarda los datos de los bienes TAL COMO ESTABAN al momento
+   de emitir el acta — no una referencia viva al inventario — para que
+   reimprimir un acta siempre muestre exactamente lo que se firmó
+   originalmente, aunque el bien haya cambiado o se haya eliminado
+   después.
+
+5) bien_historial_custodio: traza cada cambio de custodio de un bien
+   (custodio_anterior, custodio_nuevo, usuario_modifica, fecha_traspaso).
+
+6) bitacora_auditoria: bitácora general de auditoría del sistema
+   (codigo_bien, usuario, accion, detalle, fecha) — registra login/logout,
+   creación/edición/eliminación de bienes, aprobaciones y observaciones
+   TIC, importaciones y migraciones de Excel, descargas de actas y
+   respaldos de base de datos, cambios en usuarios, etc.
+
+Incluye en el informe un pequeño "diagrama" (puede ser una tabla de
+relaciones o un esquema en texto tipo árbol) mostrando que
+inventario_previo alimenta a inventario mediante un proceso de
+migración, y que actas / bien_historial_custodio / bitacora_auditoria
+son satélites de solo-lectura/histórico sin FK dura hacia inventario ni
+usuarios.
+
+--------------------------------------------------------------------
+5. MÓDULOS FUNCIONALES (documenta cada uno con su objetivo, sus
+   pantallas/endpoints principales y sus reglas de negocio)
+--------------------------------------------------------------------
+
+5.1 Autenticación y sesión
+- Login web por formulario (usuario + contraseña) contra bcrypt,
+  cookie de sesión de Flask; logout limpia la sesión.
+- Login API (/api/auth/login) devuelve un JWT; /api/auth/me devuelve
+  el usuario autenticado a partir del token.
+- Ambas vías de login están limitadas a 10 intentos por minuto por IP
+  para mitigar fuerza bruta.
+- Tres roles: Administrador, Editor, Tecnico Levantamiento. El
+  matching de rol se normaliza (minúsculas + trim) y el rol técnico
+  reconoce tanto "tecnico" como "técnico".
+
+5.2 Gestión de Inventario (módulo principal)
+- Listado paginado (10 por página) con búsqueda de texto libre y
+  filtros avanzados (bodega, estado del bien, custodio, rango de fecha
+  de ingreso).
+- La búsqueda usa MySQL FULLTEXT (modo booleano, con coincidencia de
+  prefijo por palabra) sobre las columnas de texto largo, combinado
+  con ILIKE sobre columnas cortas tipo código/estado; en dialectos sin
+  soporte FULLTEXT (ej. pruebas con SQLite) cae automáticamente a
+  ILIKE puro.
+- Alta de un nuevo bien vía modal, con formulario dividido en 4
+  pestañas (Identificación, Valoración, Características y Condición,
+  Ubicación y Custodia) siguiendo la agrupación de app/utils/campos.py.
+  Valida que el Código del Bien sea único y que los campos marcados
+  como obligatorios estén completos antes de crear el registro; el
+  bien nace en estado "En Revisión".
+- Edición de un bien existente: formulario igual al de alta, con dos
+  acciones — "Guardar como Borrador" (sin exigir campos obligatorios)
+  o "Enviar para Revisión" (exige todos los campos obligatorios,
+  validado tanto en el navegador como en el servidor). Un bien en
+  estado Aprobado solo puede editarlo Administrador o Editor; además
+  puede editarlo quien lo registró originalmente, el custodio actual
+  asignado, o cualquier usuario con rol Técnico Levantamiento (mientras
+  el bien no esté Aprobado).
+- Ciertos campos de custodia/acta (Custodio Activo, Origen del
+  Ingreso, Tipo de Ingreso, Nro de Compromiso, Estado del Acta) solo
+  pueden crearlos/editarlos el Administrador; el resto de roles los ve
+  de solo lectura.
+- Cada cambio de "Custodio Actual" queda registrado automáticamente en
+  bien_historial_custodio (quién lo tenía, a quién pasó, quién hizo el
+  cambio, cuándo), visible como tabla de trazabilidad en la pantalla
+  de edición.
+- Eliminación de un bien: SIEMPRE borrado lógico (eliminado=1), nunca
+  DELETE físico; solo el Administrador puede eliminar.
+- Exportación a Excel (.xlsx) del inventario completo o filtrado,
+  respetando el orden oficial de columnas, con formato de tabla nativa
+  de Excel (encabezado, filtros, bandas de color, ancho de columna
+  automático, formato numérico/fecha).
+
+5.3 Aprobación de Bienes / Bandeja TIC
+- Bandeja con KPIs (Pendientes, Observados, Aprobados, Total),
+  filtrado por estado y búsqueda de texto, paginado (15 por página).
+- Acciones individuales: Aprobar (con nota opcional) u Observar (con
+  motivo obligatorio), y sus equivalentes en lote (selección múltiple
+  de bienes).
+- Solo accesible para Administrador o Editor.
+- Cada aprobación/observación queda en la bitácora de auditoría.
+
+5.4 Inventario Previo (staging de cargas de Excel)
+- Flujo en dos pasos, nunca directo a producción:
+  Excel subido → tabla inventario_previo (staging) → revisión humana
+  ("Validar" fila por fila, o "Validar todas las pendientes") →
+  "Pasar al Inventario General" (migración/upsert hacia inventario,
+  solo de filas ya verificadas).
+- El sistema se adapta a CUALQUIER Excel que suba el usuario, no solo
+  al formato oficial: cada campo admite varios encabezados candidatos
+  (alias); si el Excel trae varias columnas candidatas para el mismo
+  campo (p. ej. "Ubicación 2025" y "Ubicación 2024"), se usa la
+  primera con dato no vacío por fila.
+- Filas sin un código de bien válido (vacías o con valores centinela
+  tipo "SIN CODIGO ESBYE", "INGRESAR", "POR DEFINIR", etc.) reciben un
+  código provisional único generado por el sistema, en vez de
+  descartarse o fusionarse entre sí.
+- Si el mismo código aparece repetido varias veces en el Excel, se
+  conserva la fila MÁS COMPLETA (más campos llenos), no la primera
+  encontrada.
+- La migración hace upsert por código: si el bien ya existe, solo
+  sobrescribe los campos que el staging trae con dato (nunca borra un
+  dato ya existente con un campo vacío del nuevo archivo) — permite
+  "complementar" datos con cargas sucesivas.
+- Se puede descargar una plantilla Excel oficial en blanco, con los
+  encabezados correctos y las columnas obligatorias resaltadas.
+- Solo accesible para Administrador o Editor.
+
+5.5 Actas de Custodia (PDF + QR)
+- Acta individual por bien: PDF con los datos principales del bien y
+  un código QR de verificación (contiene código, nombre del bien,
+  serie, custodio y estado), descargable por cualquier usuario
+  autenticado desde el listado de inventario.
+- Acta consolidada por custodio: reúne TODOS los bienes de un custodio
+  en un único PDF apaisado, con tabla de bienes, totales, y bloques de
+  firma ("Elaborado por" / "Verifica - Custodio"). Se genera desde un
+  modal con autocompletado de nombres de custodio, previsualización en
+  vivo (embebida en un iframe vía blob URL, sin persistir nada) y solo
+  al confirmar "Generar Acta" se numera y persiste de verdad.
+- Cada acta emitida es INMUTABLE: se guarda un snapshot JSON de los
+  datos de los bienes en ese momento; reimprimirla desde el historial
+  siempre muestra exactamente lo que se firmó, aunque el inventario
+  haya cambiado o esos bienes se hayan eliminado después.
+- Historial de actas emitidas, buscable por custodio, con reimpresión
+  en un clic.
+- Solo accesible para Administrador o Editor (salvo la descarga de
+  acta individual, disponible a cualquier usuario autenticado).
+
+5.6 Auditoría
+- Bitácora de los últimos 200 eventos del sistema, buscable por
+  código de bien, usuario, acción o detalle.
+- Registra: login/logout, alta/edición/eliminación de bienes,
+  aprobación/observación (individual y en lote), exportaciones e
+  importaciones de Excel, migraciones, descargas de actas
+  individuales/consolidadas/reimpresiones, y respaldos de base de
+  datos.
+- Solo accesible para Administrador o Editor.
+
+5.7 Gestión de Usuarios
+- CRUD de usuarios del sistema (crear, editar datos y rol, cambiar
+  contraseña, eliminar), accesible para Administrador y Editor, con
+  la salvedad de que SOLO el Administrador puede: eliminar usuarios,
+  otorgar el rol Administrador a alguien, o modificar (rol, contraseña,
+  datos) una cuenta que ya es Administrador. Esta restricción se
+  aplica tanto en el backend (web y API) como ocultando en la interfaz
+  las opciones que un Editor no puede ejecutar.
+- Un usuario no puede eliminar su propia cuenta.
+- Incluye un botón (solo Administrador) para generar y descargar de
+  inmediato un respaldo completo de la base de datos (mysqldump),
+  quedando registrado en la bitácora de auditoría.
+
+--------------------------------------------------------------------
+6. SEGURIDAD
+--------------------------------------------------------------------
+Redacta un apartado de seguridad que cubra, con el nivel de detalle de
+un informe técnico serio:
+- Modelo de autenticación dual (sesión de cookie para HTML, JWT por
+  cabecera para la API), validando ambas contra el mismo modelo
+  Usuario y el mismo hash bcrypt — una sola fuente de verdad de
+  credenciales.
+- Autorización basada en roles, aplicada en el servidor mediante
+  decoradores (no solo ocultando botones en la interfaz), replicada de
+  forma consistente entre la capa web y la capa API.
+- Protección CSRF en todos los formularios HTML (Flask-WTF), con la
+  API JSON exenta por diseño al no depender de cookies.
+- Limitación de intentos de login (10/min por IP) en ambas superficies
+  de autenticación.
+- Contraseñas con hash bcrypt (12 rondas), nunca en texto plano.
+- Borrado lógico de bienes (nunca DELETE físico) por motivos de
+  trazabilidad/control de activos con valor contable.
+- Bitácora de auditoría inmutable y sin FK dura, para que sobreviva a
+  eliminaciones.
+- Auditoría de seguridad ya realizada sobre el código (detállala en la
+  sección 9, "Pruebas y control de calidad").
+- Como recomendaciones (no implementadas todavía), menciona: mover el
+  almacenamiento de Flask-Limiter de memoria a un backend compartido
+  tipo Redis si el sistema se despliega con más de un proceso/worker;
+  configurar HTTPS obligatorio y las cookies "Secure" en producción
+  (ya soportado por config.py, falta habilitarlo en el entorno real);
+  y revisar periódicamente los roles de las cuentas activas.
+
+--------------------------------------------------------------------
+7. API REST
+--------------------------------------------------------------------
+Documenta en una tabla los endpoints principales de /api/ (todos
+devuelven/reciben JSON):
+
+Autenticación (app/api/auth.py):
+- POST /api/auth/login → { username, password } → { access_token, usuario }
+- GET  /api/auth/me (JWT requerido) → datos del usuario autenticado
+
+Bienes (app/api/bienes.py), todos requieren JWT:
+- GET    /api/bienes → lista paginada (?q=, ?estado=, ?pagina=, ?por_pagina=)
+- POST   /api/bienes → crea un bien (valida campos obligatorios)
+- GET    /api/bienes/<codigo> → detalle de un bien
+- PUT/PATCH /api/bienes/<codigo> → edita un bien (respeta permisos y
+  campos bloqueados por rol)
+- DELETE /api/bienes/<codigo> → borrado lógico (solo Administrador)
+
+TIC (app/api/tic.py), requieren JWT + rol Administrador/Editor:
+- POST /api/tic/aprobar → { codigo_bien, nota }
+- POST /api/tic/observar → { codigo_bien, motivo }
+
+Usuarios (app/api/usuarios.py), requieren JWT + rol Administrador/Editor
+(las restricciones de rol Administrador descritas en 5.7 aplican igual
+aquí):
+- GET    /api/usuarios
+- POST   /api/usuarios
+- PUT/PATCH /api/usuarios/<id>
+- DELETE /api/usuarios/<id> (solo Administrador)
+
+--------------------------------------------------------------------
+8. FLUJO DE ESTADOS DE UN BIEN (inclúyelo como diagrama/tabla)
+--------------------------------------------------------------------
+Borrador → En Revisión → (revisión TIC) → Aprobado
+                                        ↘ Observado → (corrección) → En Revisión
+
+- Borrador: el usuario está completando el formulario, sin exigencias
+  de campos obligatorios; no es visible para aprobación TIC.
+- En Revisión: todos los campos obligatorios están completos; entra a
+  la bandeja de aprobación TIC.
+- Aprobado: TIC lo validó; queda bloqueado para edición salvo
+  Administrador/Editor (o los roles con permiso descritos en 5.2).
+- Observado: TIC lo rechazó con un motivo; debe corregirse y reenviarse.
+
+--------------------------------------------------------------------
+9. PRUEBAS Y CONTROL DE CALIDAD REALIZADO
+--------------------------------------------------------------------
+Redacta esta sección como el resultado de una auditoría técnica y de
+seguridad ya ejecutada sobre el código fuente completo (revisión
+manual de todos los módulos backend y todas las plantillas, más
+pruebas funcionales automatizadas levantando la aplicación real contra
+una base de datos de pruebas). Resultado:
+
+- Se verificó que las ~80 clases de icono (Bootstrap Icons) usadas en
+  las plantillas existen todas en la librería vendorizada: sin errores
+  visuales de iconografía.
+- Se ejecutaron pruebas funcionales end-to-end (login, navegación por
+  cada módulo, generación de PDF, flujo completo de creación/edición de
+  bienes) sin errores.
+- Se identificaron y corrigieron 3 defectos:
+  1. [Crítico] Escalación de privilegios: un usuario con rol Editor
+     podía crear cuentas con rol Administrador, degradar el rol del
+     Administrador real, y resetear su contraseña (toma de control de
+     la cuenta), porque las rutas de gestión de usuarios no
+     restringían el campo "rol" ni protegían las cuentas ya
+     administradoras. Corregido con nuevas reglas de autorización
+     (puede_asignar_rol, puede_gestionar_cuenta), aplicadas en backend
+     web, backend API, y reflejadas en la interfaz.
+  2. [Alto] Creación de bienes sin validar campos obligatorios: el
+     formulario de alta marcaba visualmente campos como obligatorios,
+     pero el servidor no los exigía (a diferencia de la edición), lo
+     que permitía bienes incompletos entrando directo a la cola de
+     aprobación TIC. Corregido igualando la validación de alta a la de
+     edición, tanto en la web como en la API.
+  3. [Medio] El login de la API JSON no tenía límite de intentos,
+     mientras que el login web sí, permitiendo fuerza bruta de
+     contraseñas sin restricción por esa vía. Corregido aplicando el
+     mismo límite (10/min).
+- Como mejora funcional, se conectó a la interfaz la generación de
+  respaldos de base de datos (ya implementada mas nunca invocada desde
+  la aplicación), con un botón dedicado solo para el rol Administrador.
+- Todas las correcciones se validaron con pruebas de regresión
+  automatizadas antes y después del cambio, confirmando que no se
+  rompió ningún flujo existente.
+
+--------------------------------------------------------------------
+10. INSTALACIÓN Y DESPLIEGUE (resumen operativo)
+--------------------------------------------------------------------
+- Requisitos: Python 3.11+, MySQL Server 8.x + MySQL Workbench, cliente
+  mysqldump disponible en el PATH.
+- La base de datos se crea completa ejecutando sql/schema.sql desde
+  MySQL Workbench (crea las 6 tablas, sus índices, y un usuario
+  Administrador inicial con contraseña ya hasheada).
+- Configuración por archivo .env (a partir de .env.example): claves
+  secretas de sesión y JWT (distintas entre sí), credenciales de base
+  de datos, orígenes CORS permitidos, carpeta y ruta de mysqldump para
+  respaldos.
+- Arranque: pip install -r requirements.txt && python run.py, sirve en
+  http://localhost:5000, redirige automáticamente a /login.
+- Pensado para correr como proceso único (no hay orquestación
+  multi-worker configurada); si se escala a varios procesos, hay que
+  migrar el backend de rate-limiting a un almacenamiento compartido.
+
+--------------------------------------------------------------------
+11. RECOMENDACIONES / TRABAJO FUTURO
+--------------------------------------------------------------------
+Redacta como recomendaciones profesionales (no las presentes como
+defectos, sino como oportunidades de evolución):
+- Agregar una vista de "bienes eliminados" con opción de restauración
+  para el Administrador (hoy el borrado lógico existe en la base de
+  datos, pero no hay pantalla para consultarlo ni revertirlo salvo
+  volviendo a subirlo por Excel).
+- Migrar el backend de límite de peticiones (Flask-Limiter) a un
+  almacenamiento compartido (Redis) antes de escalar a múltiples
+  procesos/servidores.
+- Automatizar la ejecución periódica de respaldos (hoy es manual, bajo
+  demanda, aunque ya está disponible desde la interfaz).
+- Considerar pruebas automatizadas (suite de tests) integradas al
+  repositorio para prevenir regresiones futuras.
+- Añadir un panel de estadísticas/dashboard (valor total de activos,
+  distribución por bodega/estado, tendencia de aprobaciones).
+
+--------------------------------------------------------------------
+12. INSTRUCCIONES DE FORMATO PARA EL DOCUMENTO FINAL
+--------------------------------------------------------------------
+- Portada con: título "Informe Técnico — Sistema de Control de Activos
+  INAMHI", subtítulo, espacio para logo institucional, autor/área,
+  fecha, versión del documento (v1.0).
+- Tabla de contenido automática/generada tras la portada.
+- Usa las secciones 1 a 11 de este prompt como la numeración de
+  capítulos del informe (Introducción, Descripción General,
+  Arquitectura, Modelo de Datos, Módulos Funcionales, Seguridad, API
+  REST, Flujo de Estados, Pruebas y Control de Calidad, Instalación y
+  Despliegue, Recomendaciones), y cierra con una sección de
+  Conclusiones.
+- Usa tablas reales de Word para: comparativas de roles y permisos,
+  descripción de tablas de la base de datos, listado de endpoints de
+  la API, y el resumen de defectos encontrados/corregidos (con
+  columnas: # | Severidad | Descripción | Módulo afectado | Estado).
+- Tono formal, técnico, en tercera persona, apto para presentar a
+  autoridades institucionales.
+- Al final, genera el archivo descargable en formato .docx.
+
+====================================================================
+FIN DEL PROMPT
+====================================================================

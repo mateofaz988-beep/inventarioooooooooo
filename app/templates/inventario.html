@@ -288,7 +288,22 @@
         }
     }
 
-    document.getElementById('form-nuevo-registro').addEventListener('submit', function () {
+    document.getElementById('form-nuevo-registro').addEventListener('submit', function (evento) {
+        const requeridos = this.querySelectorAll('[data-requerido="1"]');
+        let faltantes = [];
+        requeridos.forEach(function (campo) {
+            if (!(campo.value || '').trim()) {
+                faltantes.push(campo.previousElementSibling ? campo.previousElementSibling.textContent.trim() : campo.name);
+                campo.classList.add('is-invalid');
+            } else {
+                campo.classList.remove('is-invalid');
+            }
+        });
+        if (faltantes.length > 0) {
+            evento.preventDefault();
+            alert('Faltan campos obligatorios:\n- ' + faltantes.join('\n- '));
+            return;
+        }
         const boton = document.getElementById('btn-guardar-nuevo');
         boton.disabled = true;
         boton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Guardando...';

@@ -81,6 +81,18 @@ def crear():
 
     if not codigo_bien:
         return jsonify({"error": "codigo_bien es obligatorio"}), 400
+
+    # Mismo criterio que la ruta web equivalente (ver app/web/inventario.py:nuevo):
+    # un bien creado aquí nace en estado "En Revisión", así que debe cumplir la
+    # misma validación de campos obligatorios que exige editar()/PUT para ese estado.
+    faltantes = [
+        CAMPOS_POR_ATTR[attr]["label"]
+        for attr in CAMPOS_REQUERIDOS
+        if attr != "codigo_bien" and not str(datos.get(attr) or "").strip()
+    ]
+    if faltantes:
+        return jsonify({"error": "Faltan campos obligatorios", "campos": faltantes}), 400
+
     if Inventario.query.filter_by(codigo_bien=codigo_bien).first():
         return jsonify({"error": f"Ya existe un bien con el código '{codigo_bien}'"}), 409
 

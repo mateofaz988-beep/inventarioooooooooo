@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import create_access_token, jwt_required
 
+from app.extensions import limiter
 from app.models.usuario import Usuario
 from app.utils.auditoria import registrar
 from app.api.decorators import usuario_desde_jwt
@@ -9,6 +10,10 @@ api_auth_bp = Blueprint("api_auth", __name__, url_prefix="/api/auth")
 
 
 @api_auth_bp.route("/login", methods=["POST"])
+# Mismo límite que el login web (ver app/web/auth.py): sin esto, la API JSON
+# ofrece una vía de fuerza bruta de contraseñas sin ninguna restricción,
+# contra el mismo modelo Usuario y el mismo hash bcrypt.
+@limiter.limit("10 per minute")
 def login():
     datos = request.get_json(silent=True) or {}
     username = (datos.get("username") or "").strip()

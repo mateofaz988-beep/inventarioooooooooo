@@ -4,6 +4,7 @@ from app.extensions import db
 from app.models.usuario import ROLES_DISPONIBLES, Usuario
 from app.utils.auditoria import registrar
 from app.api.decorators import admin_o_editor_required_api, admin_required_api, usuario_desde_jwt
+from app.utils.permisos import puede_asignar_rol, puede_gestionar_cuenta
 
 api_usuarios_bp = Blueprint("api_usuarios", __name__, url_prefix="/api/usuarios")
 
@@ -26,6 +27,8 @@ def crear():
 
     if not username or not password:
         return jsonify({"error": "username y password son obligatorios"}), 400
+    if not puede_asignar_rol(admin, rol):
+        return jsonify({"error": "Acceso denegado: solo el Administrador puede crear otra cuenta con rol Administrador"}), 403
     if Usuario.query.filter_by(username=username).first():
         return jsonify({"error": f"Ya existe un usuario con el nombre '{username}'"}), 409
 
@@ -52,7 +55,12 @@ def editar(usuario_id):
     if usuario is None:
         return jsonify({"error": "Usuario no encontrado"}), 404
 
+    if not puede_gestionar_cuenta(admin, usuario):
+        return jsonify({"error": "Acceso denegado: solo el Administrador puede modificar una cuenta Administrador"}), 403
+
     datos = request.get_json(silent=True) or {}
+    if "rol" in datos and not puede_asignar_rol(admin, datos.get("rol")):
+        return jsonify({"error": "Acceso denegado: solo el Administrador puede otorgar el rol Administrador"}), 403
     if "username" in datos:
         nuevo_username = (datos.get("username") or "").strip()
         if not nuevo_username:

@@ -58,6 +58,32 @@ def campos_bloqueados_para(usuario: Usuario | None) -> frozenset[str]:
     return CAMPOS_RESTRINGIDOS_EDITOR
 
 
+def puede_asignar_rol(actor: Usuario | None, rol_destino: str | None) -> bool:
+    """Solo el Administrador (rol estricto) puede otorgar el rol Administrador
+    a un usuario, sea al crearlo o al editarlo.
+
+    Sin este check, `admin_o_editor_required` deja crear/editar usuarios a
+    cualquier Editor, que entonces podría auto-otorgarse (o darle a un
+    tercero) el rol más alto del sistema con un simple POST — una escalada de
+    privilegios completa a partir de una cuenta no administrativa.
+    """
+    if normalizar_rol(rol_destino) == ROL_ADMINISTRADOR.lower():
+        return es_administrador(actor)
+    return True
+
+
+def puede_gestionar_cuenta(actor: Usuario | None, usuario_objetivo: Usuario | None) -> bool:
+    """El Editor no puede modificar (rol, contraseña, datos) ni una cuenta que
+    YA es Administrador, aunque `admin_o_editor_required` le permita llegar a
+    esas rutas. Sin esto, un Editor podría degradar el rol del Administrador
+    real o resetearle la contraseña (toma de control de la cuenta), ya que
+    esas rutas no exigen rol estricto de Administrador.
+    """
+    if usuario_objetivo is not None and es_administrador(usuario_objetivo):
+        return es_administrador(actor)
+    return True
+
+
 def es_tecnico(usuario: Usuario | None) -> bool:
     if not usuario:
         return False

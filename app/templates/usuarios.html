@@ -4,9 +4,20 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0"><i class="bi bi-people"></i> Gestión de Usuarios</h4>
-    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
-        <i class="bi bi-person-plus"></i> Nuevo Usuario
-    </button>
+    <div class="d-flex gap-2">
+        {% if usuario_actual.es_administrador %}
+        <form method="POST" action="{{ url_for('usuarios.respaldo') }}" class="d-inline"
+              onsubmit="return confirm('¿Generar un respaldo de la base de datos ahora? Puede tardar unos segundos.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-secondary">
+                <i class="bi bi-database-down"></i> Respaldar Base de Datos
+            </button>
+        </form>
+        {% endif %}
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
+            <i class="bi bi-person-plus"></i> Nuevo Usuario
+        </button>
+    </div>
 </div>
 
 <div class="card">
@@ -40,6 +51,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
+                            {% if usuario_actual.es_administrador or not u.es_administrador %}
                             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
                                     data-bs-target="#modalEditar-{{ u.id }}" title="Editar">
                                 <i class="bi bi-pencil"></i>
@@ -48,6 +60,7 @@
                                     data-bs-target="#modalPassword-{{ u.id }}" title="Cambiar contraseña">
                                 <i class="bi bi-key"></i>
                             </button>
+                            {% endif %}
                             {% if u.id != usuario_actual.id and usuario_actual.es_administrador %}
                                 <button type="button" class="btn btn-sm btn-outline-danger" title="Eliminar"
                                         onclick="confirmarEliminarUsuario('{{ u.id }}', '{{ u.username }}')">
@@ -93,10 +106,13 @@
                                         <div class="mb-2">
                                             <label class="form-label">Rol</label>
                                             <select class="form-select" name="rol">
-                                                {% for r in roles %}
+                                                {% for r in roles if usuario_actual.es_administrador or r != 'Administrador' %}
                                                     <option value="{{ r }}" {% if u.rol == r %}selected{% endif %}>{{ r }}</option>
                                                 {% endfor %}
                                             </select>
+                                            {% if not usuario_actual.es_administrador %}
+                                                <small class="text-muted">Solo el Administrador puede otorgar el rol Administrador.</small>
+                                            {% endif %}
                                         </div>
                                     </div>
                                     <div class="modal-footer">
@@ -174,10 +190,13 @@
                     <div class="mb-2">
                         <label class="form-label">Rol</label>
                         <select class="form-select" name="rol">
-                            {% for r in roles %}
+                            {% for r in roles if usuario_actual.es_administrador or r != 'Administrador' %}
                                 <option value="{{ r }}">{{ r }}</option>
                             {% endfor %}
                         </select>
+                        {% if not usuario_actual.es_administrador %}
+                            <small class="text-muted">Solo el Administrador puede otorgar el rol Administrador.</small>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="modal-footer">

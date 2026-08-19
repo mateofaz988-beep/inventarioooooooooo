@@ -1,9 +1,11 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 
 from app.extensions import db
 from app.models.usuario import ROLES_DISPONIBLES, Usuario
 from app.utils.auditoria import registrar
+from app.utils.backup import RespaldoError, generar_respaldo
 from app.utils.decorators import admin_o_editor_required, admin_required, usuario_actual
+from app.utils.permisos import puede_asignar_rol, puede_gestionar_cuenta
 
 usuarios_bp = Blueprint("usuarios", __name__)
 
@@ -30,6 +32,10 @@ def crear():
         flash("Usuario y contraseña son obligatorios.", "danger")
         return redirect(url_for("usuarios.listar"))
 
+    if not puede_asignar_rol(admin, rol):
+        flash("Acceso denegado: solo el Administrador puede crear otra cuenta con rol Administrador.", "danger")
+        return redirect(url_for("usuarios.listar"))
+
     if Usuario.query.filter_by(username=username).first():
         flash(f"Ya existe un usuario con el nombre '{username}'.", "danger")
         return redirect(url_for("usuarios.listar"))
@@ -54,6 +60,10 @@ def editar(usuario_id):
     admin = usuario_actual()
     usuario = Usuario.query.get_or_404(usuario_id)
 
+    if not puede_gestionar_cuenta(admin, usuario):
+        flash("Acceso denegado: solo el Administrador puede modificar una cuenta Administrador.", "danger")
+        return redirect(url_for("usuarios.listar"))
+
     username = (request.form.get("username") or "").strip()
     rol = request.form.get("rol") or usuario.rol
     nombre_completo = (request.form.get("nombre_completo") or "").strip() or None
@@ -62,6 +72,10 @@ def editar(usuario_id):
 
     if not username:
         flash("El nombre de usuario no puede estar vacío.", "danger")
+        return redirect(url_for("usuarios.listar"))
+
+    if not puede_asignar_rol(admin, rol):
+        flash("Acceso denegado: solo el Administrador puede otorgar el rol Administrador.", "danger")
         return redirect(url_for("usuarios.listar"))
 
     duplicado = Usuario.query.filter(Usuario.username == username, Usuario.id != usuario.id).first()
@@ -87,6 +101,11 @@ def editar(usuario_id):
 def cambiar_password(usuario_id):
     admin = usuario_actual()
     usuario = Usuario.query.get_or_404(usuario_id)
+
+    if not puede_gestionar_cuenta(admin, usuario):
+        flash("Acceso denegado: solo el Administrador puede cambiar la contraseña de una cuenta Administrador.", "danger")
+        return redirect(url_for("usuarios.listar"))
+
     nueva_password = request.form.get("password") or ""
 
     if not nueva_password or len(nueva_password) < 6:
@@ -120,3 +139,25 @@ def eliminar(usuario_id):
 
     flash(f"Usuario '{username}' eliminado correctamente.", "success")
     return redirect(url_for("usuarios.listar"))
+
+
+@usuarios_bp.route("/usuarios/respaldo", methods=["POST"])
+@admin_required
+def respaldo():
+    """Genera un respaldo de la base de datos (mysqldump) bajo demanda y lo
+    ofrece para descarga inmediata. `app/utils/backup.py` ya implementaba
+    esto, pero solo podía invocarse a mano desde una shell de Python (ver
+    README) — sin un disparador en la interfaz, en la práctica nunca se
+    ejecutaba. También queda registrado en la bitácora de auditoría.
+    """
+    admin = usuario_actual()
+    try:
+        ruta = generar_respaldo(current_app.config)
+    except RespaldoError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("usuarios.listar"))
+
+    registrar(usuario=admin.username, accion="Respaldo de base de datos",
+              detalle=f"Archivo generado: {ruta.name}")
+
+    return send_file(ruta, as_attachment=True, download_name=ruta.name, mimetype="application/sql")

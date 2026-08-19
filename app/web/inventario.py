@@ -5,7 +5,7 @@ from app.models.inventario import ESTADO_EN_REVISION, Inventario
 from app.models.usuario import Usuario
 from app.utils.auditoria import registrar
 from app.utils.busqueda import aplicar_busqueda_texto
-from app.utils.campos import CAMPOS_BIEN, TABS, TIPO_TEXTO
+from app.utils.campos import CAMPOS_BIEN, CAMPOS_POR_ATTR, CAMPOS_REQUERIDOS, TABS, TIPO_TEXTO
 from app.utils.decorators import login_required, usuario_actual
 from app.utils.excel_export import exportar_inventario_excel, nombre_archivo_exportacion
 from app.utils.parsing import limpiar_texto_corto, parse_decimal, parse_entero, parse_fecha
@@ -104,6 +104,20 @@ def nuevo():
 
     if Inventario.query.filter_by(codigo_bien=codigo_bien).first():
         flash(f"Ya existe un bien con el código '{codigo_bien}'.", "danger")
+        return redirect(url_for("inventario.listar"))
+
+    # Un bien nuevo se crea directamente en estado "En Revisión" (ver
+    # README), así que debe cumplir aquí la misma validación de campos
+    # obligatorios que `editar.editar` exige para pasar a ese estado; de lo
+    # contrario el formulario marca campos con * como obligatorios pero nada
+    # lo hacía cumplir, y bienes incompletos llegaban listos para aprobación TIC.
+    faltantes = [
+        CAMPOS_POR_ATTR[attr]["label"]
+        for attr in CAMPOS_REQUERIDOS
+        if attr != "codigo_bien" and not (request.form.get(attr) or "").strip()
+    ]
+    if faltantes:
+        flash("Faltan campos obligatorios: " + ", ".join(faltantes), "danger")
         return redirect(url_for("inventario.listar"))
 
     bien = Inventario(codigo_bien=codigo_bien, estado=ESTADO_EN_REVISION, usuario_registro=usuario.username)
