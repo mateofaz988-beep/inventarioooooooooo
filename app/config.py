@@ -21,22 +21,36 @@ class Config:
     # --- Sesiones Flask (cookies de las páginas HTML) ---
     SECRET_KEY = _required("SECRET_KEY")
 
-    # --- Base de datos MySQL ---
-    DB_HOST = os.environ.get("DB_HOST", "localhost")
-    DB_PORT = os.environ.get("DB_PORT", "3306")
-    DB_USER = _required("DB_USER")
-    DB_PASSWORD = _required("DB_PASSWORD")
-    DB_NAME = _required("DB_NAME")
+    # --- Base de datos ---
+    # DB_ENGINE=mysql (por defecto, producción): requiere DB_USER/DB_PASSWORD/
+    # DB_NAME contra un MySQL real creado con sql/schema.sql.
+    # DB_ENGINE=sqlite: modo local para una máquina SIN MySQL instalado (ver
+    # scripts/seed_sqlite_admin.py). Cada máquina lee su propio archivo .env
+    # (nunca se sube al repositorio, ver .gitignore), así que activar este
+    # modo aquí no afecta a ninguna otra máquina que sí tenga MySQL configurado.
+    DB_ENGINE = os.environ.get("DB_ENGINE", "mysql").strip().lower()
 
-    SQLALCHEMY_DATABASE_URI = (
-        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-        f"?charset=utf8mb4"
-    )
+    if DB_ENGINE == "sqlite":
+        SQLITE_PATH = os.environ.get("SQLITE_PATH", os.path.join(os.getcwd(), "inamhi_local.sqlite3"))
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{SQLITE_PATH}"
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+    else:
+        DB_HOST = os.environ.get("DB_HOST", "localhost")
+        DB_PORT = os.environ.get("DB_PORT", "3306")
+        DB_USER = _required("DB_USER")
+        DB_PASSWORD = _required("DB_PASSWORD")
+        DB_NAME = _required("DB_NAME")
+
+        SQLALCHEMY_DATABASE_URI = (
+            f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+            f"?charset=utf8mb4"
+        )
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            "pool_pre_ping": True,
+            "pool_recycle": 280,
+        }
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_pre_ping": True,
-        "pool_recycle": 280,
-    }
 
     # --- API JSON con JWT (independiente de las cookies de sesión) ---
     JWT_SECRET_KEY = _required("JWT_SECRET_KEY")
