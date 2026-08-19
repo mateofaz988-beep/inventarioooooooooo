@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block titulo %}Usuarios | INAMHI{% endblock %}
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-people"></i> Gestión de Usuarios</h4>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
+        <i class="bi bi-person-plus"></i> Nuevo Usuario
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Nombre Completo</th>
+                    <th>Email</th>
+                    <th>Dirección</th>
+                    <th>Rol</th>
+                    <th>Activo</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u.username }}</td>
+                        <td>{{ u.nombre_completo or '-' }}</td>
+                        <td>{{ u.email or '-' }}</td>
+                        <td>{{ u.direccion or '-' }}</td>
+                        <td><span class="badge bg-secondary">{{ u.rol }}</span></td>
+                        <td>
+                            {% if u.activo %}
+                                <span class="badge bg-success">Sí</span>
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
+                                    data-bs-target="#modalEditar-{{ u.id }}" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal"
+                                    data-bs-target="#modalPassword-{{ u.id }}" title="Cambiar contraseña">
+                                <i class="bi bi-key"></i>
+                            </button>
+                            {% if u.id != usuario_actual.id and usuario_actual.es_administrador %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" title="Eliminar"
+                                        onclick="confirmarEliminarUsuario('{{ u.id }}', '{{ u.username }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                <form id="form-eliminar-usuario-{{ u.id }}" method="POST"
+                                      action="{{ url_for('usuarios.eliminar', usuario_id=u.id) }}" class="d-none">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                    <!-- Modal Editar -->
+                    <div class="modal fade" id="modalEditar-{{ u.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('usuarios.editar', usuario_id=u.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Editar usuario: {{ u.username }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-2">
+                                            <label class="form-label">Usuario</label>
+                                            <input type="text" class="form-control" name="username" value="{{ u.username }}" required>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Nombre Completo</label>
+                                            <input type="text" class="form-control" name="nombre_completo" value="{{ u.nombre_completo or '' }}">
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Email</label>
+                                            <input type="email" class="form-control" name="email" value="{{ u.email or '' }}">
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Dirección / Departamento</label>
+                                            <input type="text" class="form-control" name="direccion" value="{{ u.direccion or '' }}"
+                                                   placeholder="Ej. Dirección Información Hidrometeorológica">
+                                            <small class="text-muted">Se usa como firma en las actas de custodia consolidadas.</small>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Rol</label>
+                                            <select class="form-select" name="rol">
+                                                {% for r in roles %}
+                                                    <option value="{{ r }}" {% if u.rol == r %}selected{% endif %}>{{ r }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Cambiar Password -->
+                    <div class="modal fade" id="modalPassword-{{ u.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('usuarios.cambiar_password', usuario_id=u.id) }}"
+                                      onsubmit="return confirm('¿Confirma el cambio de contraseña para {{ u.username }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Cambiar contraseña: {{ u.username }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <label class="form-label">Nueva contraseña</label>
+                                        <input type="password" class="form-control" name="password" minlength="6" required>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-warning">Cambiar Contraseña</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Crear Usuario -->
+<div class="modal fade" id="modalCrearUsuario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('usuarios.crear') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nuevo Usuario</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Usuario</label>
+                        <input type="text" class="form-control" name="username" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" class="form-control" name="password" minlength="6" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Nombre Completo</label>
+                        <input type="text" class="form-control" name="nombre_completo">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Dirección / Departamento</label>
+                        <input type="text" class="form-control" name="direccion"
+                               placeholder="Ej. Dirección Información Hidrometeorológica">
+                        <small class="text-muted">Se usa como firma en las actas de custodia consolidadas.</small>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Rol</label>
+                        <select class="form-select" name="rol">
+                            {% for r in roles %}
+                                <option value="{{ r }}">{{ r }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear Usuario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts_extra %}
+<script>
+    function confirmarEliminarUsuario(id, username) {
+        if (confirm("¿Está seguro que desea eliminar al usuario '" + username + "'? Esta acción no se puede deshacer.")) {
+            document.getElementById('form-eliminar-usuario-' + id).submit();
+        }
+    }
+</script>
+{% endblock %}

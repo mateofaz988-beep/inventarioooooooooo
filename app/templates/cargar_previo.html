@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Cargar Excel | INAMHI{% endblock %}
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-upload"></i> Cargar Excel al Inventario Previo</h4>
+    <a href="{{ url_for('previo.listar') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card mb-3" style="max-width: 640px;">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h6 class="mb-1"><i class="bi bi-file-earmark-arrow-down"></i> ¿No tienes un Excel todavía?</h6>
+            <p class="text-muted small mb-0">
+                Descarga la plantilla oficial con todas las columnas que reconoce el sistema
+                (Código del Bien, Código Anterior, Bien, Serie/ Identificación, Custodio Actual, etc.),
+                llénala y luego súbela aquí abajo.
+            </p>
+        </div>
+        <a href="{{ url_for('previo.plantilla') }}" class="btn btn-outline-primary text-nowrap">
+            <i class="bi bi-download"></i> Descargar plantilla
+        </a>
+    </div>
+</div>
+
+<div class="card" style="max-width: 640px;">
+    <div class="card-body">
+        <p class="text-muted">
+            El archivo se sube primero a una tabla de staging (Inventario Previo) para que un
+            Administrador pueda revisar y verificar cada fila antes de pasarla al inventario oficial.
+            Se aceptan archivos <strong>.xlsx</strong> o <strong>.xls</strong>, incluso de gran tamaño
+            (hasta ~20,000 filas).
+        </p>
+        <form method="POST" action="{{ url_for('previo.cargar') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label class="form-label" for="archivo_excel">Archivo Excel</label>
+                <input type="file" class="form-control" id="archivo_excel" name="archivo_excel"
+                       accept=".xlsx,.xls" required>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-upload"></i> Subir y Procesar
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-3" style="max-width: 640px;">
+    <div class="card-body">
+        <h6><i class="bi bi-info-circle"></i> Cómo se procesa tu Excel</h6>
+        <ul class="small text-muted mb-0">
+            <li>El sistema reconoce automáticamente los <strong>46 campos oficiales</strong> del inventario (Bien, Serie, Modelo, Marca, Color, Valor, Custodio, Ubicación, Cuenta Contable, etc.), sin importar el orden de las columnas.</li>
+            <li>Cada campo admite varios encabezados alternativos (por ejemplo, para el custodio: "Custodio Actual", "USUARIO 2025" o "USUARIO 2024" — se usa el primero que tenga dato en cada fila).</li>
+            <li>Si una fila no trae un código de bien válido (vacío o textos como "SIN CODIGO ESBYE"/"INGRESAR"), se le asigna un <strong>código provisional</strong> automáticamente — no se descarta.</li>
+            <li>Si el mismo código aparece repetido en el archivo, se conserva la fila más completa.</li>
+            <li>Al subir un archivo sobre datos que ya existen, los <strong>complementa y actualiza</strong> (no borra información previa con campos vacíos del nuevo archivo).</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

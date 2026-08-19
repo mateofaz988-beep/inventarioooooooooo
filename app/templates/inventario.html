@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+{% block titulo %}Inventario | INAMHI{% endblock %}
+{% block contenido %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <h4 class="mb-0"><i class="bi bi-box-seam"></i> Inventario de Bienes</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('inventario.exportar', **filtros) }}" class="btn btn-outline-success">
+            <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+        </a>
+        {% if usuario_actual.tiene_acceso_administrativo %}
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalCrearActas">
+            <i class="bi bi-file-earmark-pdf"></i> Crear Actas
+        </button>
+        {% endif %}
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoRegistro">
+            <i class="bi bi-plus-lg"></i> Nuevo Registro
+        </button>
+    </div>
+</div>
+
+{% set hay_filtros_avanzados = filtros.bodega or filtros.estado_bien or filtros.custodio or filtros.fecha_desde or filtros.fecha_hasta %}
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card stat-card p-3" data-tono="azul">
+            <div class="stat-card-icon"><i class="bi bi-box-seam"></i></div>
+            <div>
+                <div class="stat-card-label">{% if termino or hay_filtros_avanzados %}Resultados{% else %}Total de bienes{% endif %}</div>
+                <div class="stat-card-value">{{ total }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('inventario.listar') }}" class="row g-2 align-items-center">
+            <div class="col-md-8">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" name="q" value="{{ termino }}"
+                           placeholder="Buscar por código, bien, serie, marca, estado, bodega, ubicación, custodio o usuario...">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-secondary w-100"><i class="bi bi-search"></i> Buscar</button>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-secondary w-100" data-bs-toggle="collapse"
+                        data-bs-target="#filtrosAvanzados">
+                    <i class="bi bi-funnel"></i> Filtros
+                </button>
+            </div>
+
+            <div class="collapse {% if hay_filtros_avanzados %}show{% endif %} col-12" id="filtrosAvanzados">
+                <hr class="my-2">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Bodega</label>
+                        <select class="form-select form-select-sm" name="bodega">
+                            <option value="">Todas</option>
+                            {% for opcion in opciones_bodega %}
+                                <option value="{{ opcion }}" {% if filtros.bodega == opcion %}selected{% endif %}>{{ opcion }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Estado del Bien</label>
+                        <select class="form-select form-select-sm" name="estado_bien">
+                            <option value="">Todos</option>
+                            {% for opcion in opciones_estado_bien %}
+                                <option value="{{ opcion }}" {% if filtros.estado_bien == opcion %}selected{% endif %}>{{ opcion }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Custodio</label>
+                        <input type="text" class="form-control form-control-sm" name="custodio"
+                               value="{{ filtros.custodio }}" placeholder="Nombre del custodio">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Fecha de Ingreso</label>
+                        <div class="d-flex gap-1">
+                            <input type="date" class="form-control form-control-sm" name="fecha_desde" value="{{ filtros.fecha_desde }}">
+                            <input type="date" class="form-control form-control-sm" name="fecha_hasta" value="{{ filtros.fecha_hasta }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <button type="submit" class="btn btn-sm btn-secondary"><i class="bi bi-funnel"></i> Aplicar Filtros</button>
+                    {% if hay_filtros_avanzados or termino %}
+                    <a href="{{ url_for('inventario.listar') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> Limpiar Todo
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Código del Bien</th>
+                    <th>Bien</th>
+                    <th>Estado Bien</th>
+                    <th>Custodio Actual</th>
+                    <th>Usuario Registro</th>
+                    <th>Estado</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for bien in bienes %}
+                    <tr>
+                        <td>{{ bien.codigo_bien }}</td>
+                        <td>{{ bien.bien or '-' }}</td>
+                        <td>{{ bien.estado_bien or '-' }}</td>
+                        <td>{{ bien.custodio_actual or '-' }}</td>
+                        <td>{{ bien.usuario_registro or '-' }}</td>
+                        <td>{{ macros.badge_estado(bien.estado) }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('editar.editar', codigo=bien.codigo_bien) }}"
+                               class="btn btn-sm btn-outline-primary" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{{ url_for('acta.descargar', codigo=bien.codigo_bien) }}"
+                               class="btn btn-sm btn-outline-secondary" title="Descargar acta PDF">
+                                <i class="bi bi-file-earmark-pdf"></i>
+                            </a>
+                            {% if usuario_actual.es_administrador %}
+                            <button type="button" class="btn btn-sm btn-outline-danger" title="Eliminar"
+                                    onclick="confirmarEliminacion('{{ bien.codigo_bien }}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            <form id="form-eliminar-{{ bien.codigo_bien }}" method="POST"
+                                  action="{{ url_for('inventario.eliminar', codigo=bien.codigo_bien) }}" class="d-none">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">No se encontraron bienes registrados.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center bg-white">
+        <span class="text-muted small">Total: {{ total }} bienes</span>
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if pagina <= 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('inventario.listar', pagina=pagina-1, **filtros) }}">Anterior</a>
+                </li>
+                <li class="page-item disabled"><span class="page-link">Página {{ pagina }} de {{ total_paginas }}</span></li>
+                <li class="page-item {% if pagina >= total_paginas %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('inventario.listar', pagina=pagina+1, **filtros) }}">Siguiente</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<!-- Modal Nuevo Registro -->
+<div class="modal fade" id="modalNuevoRegistro" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('inventario.nuevo') }}" id="form-nuevo-registro">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg"></i> Nuevo Registro de Bien</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs" id="tabsNuevoRegistro" role="tablist">
+                        {% for tab_key, tab_label in tabs.items() %}
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link {% if loop.first %}active{% endif %}"
+                                    id="tab-nuevo-{{ tab_key }}-btn" data-bs-toggle="tab"
+                                    data-bs-target="#tab-nuevo-{{ tab_key }}" type="button">
+                                {{ tab_label }}
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <div class="tab-content border border-top-0 p-3">
+                        {% for tab_key, tab_label in tabs.items() %}
+                        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-nuevo-{{ tab_key }}">
+                            <div class="row">
+                                {% for campo in campos if campo.tab == tab_key %}
+                                    {{ macros.campo_input(campo, None, tecnicos, campos_bloqueados=campos_bloqueados) }}
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <small class="text-muted">Los campos marcados con <span class="text-danger">*</span> son obligatorios. El bien se creará con estado inicial "En Revisión".</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btn-guardar-nuevo"><i class="bi bi-save"></i> Guardar Registro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Crear Actas (consolidada por custodio) -->
+<div class="modal fade" id="modalCrearActas" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-pdf"></i> Crear Acta por Custodio</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Custodio</label>
+                    <input type="text" class="form-control" id="input-buscar-custodio" list="lista-custodios"
+                           placeholder="Escribe el nombre del custodio..." autocomplete="off">
+                    <datalist id="lista-custodios"></datalist>
+                    <small class="text-muted">Se generará un solo PDF con todos los bienes de este custodio.</small>
+                </div>
+                <div id="alerta-error-custodio" class="alert alert-danger d-none py-2 small mb-2" role="alert"></div>
+                <div id="spinner-busqueda-custodio" class="text-muted small py-3 text-center d-none">
+                    <span class="spinner-border spinner-border-sm me-2"></span> Buscando bienes...
+                </div>
+                <div id="resultado-custodio-vacio" class="text-muted small py-3 text-center">
+                    Escribe un nombre de custodio para ver sus bienes.
+                </div>
+                <div id="resultado-custodio-bienes" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="small text-muted">
+                            <strong id="txt-total-bienes">0</strong> bienes &mdash;
+                            Valor total: $<strong id="txt-total-valor">0.00</strong>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-vista-previa-custodio">
+                            <i class="bi bi-eye"></i> Vista Previa PDF
+                        </button>
+                    </div>
+                    <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                            <tr><th>Código</th><th>Bien</th><th>Estado</th><th class="text-end">Valor</th></tr>
+                            </thead>
+                            <tbody id="tbody-bienes-custodio"></tbody>
+                        </table>
+                    </div>
+                    <div id="bloque-vista-previa-pdf" class="d-none mt-3">
+                        <div id="spinner-vista-previa" class="text-muted small py-3 text-center d-none">
+                            <span class="spinner-border spinner-border-sm me-2"></span> Generando vista previa...
+                        </div>
+                        <iframe id="iframe-vista-previa-pdf" class="d-none w-100 border rounded"
+                                style="height: 380px;" title="Vista previa del acta"></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="text-muted small me-auto d-none d-md-inline">
+                    <i class="bi bi-info-circle"></i> El número de acta se asigna solo al presionar "Generar Acta".
+                </span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <a href="#" id="btn-generar-acta-custodio" class="btn btn-primary disabled"
+                   tabindex="-1" aria-disabled="true">
+                    <i class="bi bi-file-earmark-pdf"></i> Generar Acta
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    function confirmarEliminacion(codigo) {
+        if (confirm("¿Está seguro que desea eliminar el bien '" + codigo + "'? Esta acción no se puede deshacer.")) {
+            document.getElementById('form-eliminar-' + codigo).submit();
+        }
+    }
+
+    document.getElementById('form-nuevo-registro').addEventListener('submit', function () {
+        const boton = document.getElementById('btn-guardar-nuevo');
+        boton.disabled = true;
+        boton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Guardando...';
+    });
+
+    (function () {
+        var input = document.getElementById('input-buscar-custodio');
+        var datalist = document.getElementById('lista-custodios');
+        var alertaError = document.getElementById('alerta-error-custodio');
+        var spinnerBusqueda = document.getElementById('spinner-busqueda-custodio');
+        var bloqueVacio = document.getElementById('resultado-custodio-vacio');
+        var bloqueResultado = document.getElementById('resultado-custodio-bienes');
+        var tbody = document.getElementById('tbody-bienes-custodio');
+        var txtTotalBienes = document.getElementById('txt-total-bienes');
+        var txtTotalValor = document.getElementById('txt-total-valor');
+        var btnGenerar = document.getElementById('btn-generar-acta-custodio');
+        var btnVistaPrevia = document.getElementById('btn-vista-previa-custodio');
+        var bloqueVistaPrevia = document.getElementById('bloque-vista-previa-pdf');
+        var spinnerVistaPrevia = document.getElementById('spinner-vista-previa');
+        var iframeVistaPrevia = document.getElementById('iframe-vista-previa-pdf');
+        var timeoutSugerencias = null;
+        var timeoutBienes = null;
+        var custodioActual = '';
+        var blobUrlVistaPrevia = null;
+        // Evita que una respuesta lenta de una búsqueda anterior sobrescriba
+        // los resultados de una búsqueda más reciente (condición de carrera
+        // si el usuario escribe rápido y las respuestas llegan desordenadas).
+        var secuenciaBienes = 0;
+
+        function escaparHtml(texto) {
+            var div = document.createElement('div');
+            div.textContent = texto == null ? '' : String(texto);
+            return div.innerHTML;
+        }
+
+        // A diferencia de escaparHtml (segura dentro de un nodo de texto),
+        // esta también escapa comillas dobles: es la que hay que usar cuando
+        // el valor se inserta dentro de un atributo HTML entrecomillado
+        // (ej. value="..."), para que un nombre de custodio con comillas no
+        // pueda cerrar el atributo antes de tiempo.
+        function escaparAtributo(texto) {
+            return escaparHtml(texto).replace(/"/g, '&quot;');
+        }
+
+        function limpiarError() {
+            alertaError.classList.add('d-none');
+            alertaError.textContent = '';
+        }
+
+        function deshabilitarBoton() {
+            btnGenerar.classList.add('disabled');
+            btnGenerar.href = '#';
+            btnGenerar.setAttribute('tabindex', '-1');
+            btnGenerar.setAttribute('aria-disabled', 'true');
+        }
+
+        function habilitarBoton(href) {
+            btnGenerar.classList.remove('disabled');
+            btnGenerar.href = href;
+            btnGenerar.removeAttribute('tabindex');
+            btnGenerar.setAttribute('aria-disabled', 'false');
+        }
+
+        function ocultarVistaPrevia() {
+            if (blobUrlVistaPrevia) {
+                URL.revokeObjectURL(blobUrlVistaPrevia);
+                blobUrlVistaPrevia = null;
+            }
+            iframeVistaPrevia.src = '';
+            iframeVistaPrevia.classList.add('d-none');
+            spinnerVistaPrevia.classList.add('d-none');
+            bloqueVistaPrevia.classList.add('d-none');
+        }
+
+        function mostrarError(mensaje) {
+            alertaError.textContent = mensaje;
+            alertaError.classList.remove('d-none');
+            spinnerBusqueda.classList.add('d-none');
+            bloqueResultado.classList.add('d-none');
+            bloqueVacio.classList.add('d-none');
+            ocultarVistaPrevia();
+            deshabilitarBoton();
+        }
+
+        function mostrarVacio(mensaje) {
+            limpiarError();
+            spinnerBusqueda.classList.add('d-none');
+            bloqueResultado.classList.add('d-none');
+            bloqueVacio.classList.remove('d-none');
+            bloqueVacio.textContent = mensaje;
+            ocultarVistaPrevia();
+            deshabilitarBoton();
+        }
+
+        function mostrarBuscando() {
+            limpiarError();
+            bloqueResultado.classList.add('d-none');
+            bloqueVacio.classList.add('d-none');
+            ocultarVistaPrevia();
+            spinnerBusqueda.classList.remove('d-none');
+        }
+
+        input.addEventListener('input', function () {
+            var termino = input.value.trim();
+
+            clearTimeout(timeoutSugerencias);
+            timeoutSugerencias = setTimeout(function () {
+                if (termino.length < 2) { datalist.innerHTML = ''; return; }
+                fetch('{{ url_for("acta.custodios_buscar") }}?q=' + encodeURIComponent(termino))
+                    .then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+                    .then(function (nombres) {
+                        datalist.innerHTML = nombres.map(function (n) {
+                            return '<option value="' + escaparAtributo(n) + '"></option>';
+                        }).join('');
+                    })
+                    .catch(function () {
+                        // Falla silenciosa a propósito: es solo el autocompletado,
+                        // no bloquea poder escribir el nombre completo a mano.
+                        datalist.innerHTML = '';
+                    });
+            }, 250);
+
+            clearTimeout(timeoutBienes);
+            if (!termino) {
+                mostrarVacio('Escribe un nombre de custodio para ver sus bienes.');
+                return;
+            }
+            var miSecuencia = ++secuenciaBienes;
+            mostrarBuscando();
+            timeoutBienes = setTimeout(function () {
+                fetch('{{ url_for("acta.custodios_bienes") }}?custodio=' + encodeURIComponent(termino))
+                    .then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+                    .then(function (data) {
+                        if (miSecuencia !== secuenciaBienes) { return; }
+                        spinnerBusqueda.classList.add('d-none');
+                        if (!data.bienes.length) {
+                            mostrarVacio('No se encontraron bienes para ese custodio.');
+                            return;
+                        }
+                        limpiarError();
+                        bloqueVacio.classList.add('d-none');
+                        bloqueResultado.classList.remove('d-none');
+                        ocultarVistaPrevia();
+                        custodioActual = termino;
+                        txtTotalBienes.textContent = data.bienes.length;
+                        txtTotalValor.textContent = data.total_valor.toFixed(2);
+                        tbody.innerHTML = data.bienes.map(function (b) {
+                            return '<tr><td>' + escaparHtml(b.codigo_bien) + '</td>' +
+                                   '<td>' + escaparHtml(b.bien || '-') + '</td>' +
+                                   '<td>' + escaparHtml(b.estado_bien || '-') + '</td>' +
+                                   '<td class="text-end">' + (b.valor_compra !== null ? b.valor_compra.toFixed(2) : '-') + '</td></tr>';
+                        }).join('');
+                        habilitarBoton('{{ url_for("acta.descargar_consolidado") }}?custodio=' + encodeURIComponent(termino));
+                    })
+                    .catch(function () {
+                        if (miSecuencia !== secuenciaBienes) { return; }
+                        mostrarError('No se pudo consultar los bienes del custodio. Intenta de nuevo.');
+                    });
+            }, 350);
+        });
+
+        btnVistaPrevia.addEventListener('click', function () {
+            if (!custodioActual) { return; }
+            var miCustodio = custodioActual;
+            bloqueVistaPrevia.classList.remove('d-none');
+            iframeVistaPrevia.classList.add('d-none');
+            spinnerVistaPrevia.classList.remove('d-none');
+            btnVistaPrevia.disabled = true;
+
+            fetch('{{ url_for("acta.vista_previa_consolidado") }}?custodio=' + encodeURIComponent(miCustodio))
+                .then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.blob(); })
+                .then(function (blob) {
+                    if (miCustodio !== custodioActual) { return; }
+                    if (blobUrlVistaPrevia) { URL.revokeObjectURL(blobUrlVistaPrevia); }
+                    blobUrlVistaPrevia = URL.createObjectURL(blob);
+                    iframeVistaPrevia.src = blobUrlVistaPrevia;
+                    spinnerVistaPrevia.classList.add('d-none');
+                    iframeVistaPrevia.classList.remove('d-none');
+                })
+                .catch(function () {
+                    if (miCustodio !== custodioActual) { return; }
+                    spinnerVistaPrevia.classList.add('d-none');
+                    bloqueVistaPrevia.classList.add('d-none');
+                    mostrarError('No se pudo generar la vista previa del PDF. Intenta de nuevo.');
+                })
+                .finally(function () {
+                    btnVistaPrevia.disabled = false;
+                });
+        });
+
+        // Si se cierra el modal sin generar el acta y se vuelve a abrir, no
+        // debe quedar visible ni habilitado el resultado de la búsqueda
+        // anterior (podría generarse el acta de un custodio distinto al que
+        // el usuario cree estar viendo).
+        document.getElementById('modalCrearActas').addEventListener('hidden.bs.modal', function () {
+            secuenciaBienes += 1;
+            custodioActual = '';
+            input.value = '';
+            datalist.innerHTML = '';
+            limpiarError();
+            mostrarVacio('Escribe un nombre de custodio para ver sus bienes.');
+        });
+    })();
+</script>
+{% endblock %}

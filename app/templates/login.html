@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block titulo %}Iniciar Sesión | INAMHI{% endblock %}
+
+{% block estilos_extra %}
+<style>
+    html, body {
+        height: 100%;
+        margin: 0;
+        background-color: #0b1120;
+    }
+
+    /* --- Fondo fotográfico (cordillera) con zoom lento tipo "Ken Burns" y
+       velo oscuro degradado encima para que la tarjeta y el texto blanco
+       mantengan buen contraste. Pantalla completa: sin margen, sin esquinas
+       redondeadas ni límite de alto, cubre todo el viewport (el <div>
+       contenedor de base.html ya no le aplica padding cuando no hay sesión
+       iniciada, ver base.html). */
+    .login-shell {
+        position: fixed;
+        inset: 0;
+        min-height: 100vh;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        isolation: isolate;
+        background-color: #0b1120;
+    }
+
+    .login-shell::before {
+        content: "";
+        position: absolute;
+        inset: -6%;
+        z-index: -1;
+        background: url('{{ url_for("static", filename="img/fondo_login.jpg") }}') center/cover no-repeat;
+        animation: zoomFondo 26s ease-in-out infinite alternate;
+    }
+
+    .login-shell::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(11,17,32,0.6) 0%, rgba(11,17,32,0.42) 45%, rgba(11,17,32,0.82) 100%);
+    }
+
+    @keyframes zoomFondo {
+        from { transform: scale(1); }
+        to   { transform: scale(1.08); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .login-shell::before { animation: none; }
+    }
+
+    /* Tarjeta de acceso: panel casi transparente, se funde con el fondo animado */
+    .login-card {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        max-width: 420px;
+        margin: 1.5rem;
+        padding: 2.5rem 2.25rem 2.25rem;
+        border-radius: 1.5rem;
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        overflow: hidden;
+        animation: apareceCard 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .login-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #2563eb, #facc15, #dc2626);
+    }
+
+    @keyframes apareceCard {
+        from { opacity: 0; transform: translateY(14px) scale(0.98); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .login-logo-wrap {
+        display: inline-block;
+        margin: 0 auto 1.1rem;
+        animation: apareceLogo 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .login-logo {
+        display: block;
+        width: 280px;
+        max-width: 100%;
+        height: auto;
+    }
+
+    @keyframes apareceLogo {
+        from { opacity: 0; transform: translateY(-8px) scale(0.92); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .login-titulo-grande {
+        color: #ffffff;
+        font-weight: 800;
+        font-size: 1.9rem;
+        letter-spacing: -0.01em;
+        text-shadow: 0 0 30px rgba(96, 165, 250, 0.45);
+        margin-bottom: 0.3rem;
+    }
+
+    .login-subtitulo {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.3rem 0.9rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .login-subtitulo i { font-size: 0.8rem; color: #facc15; }
+
+    /* Campos tipo píldora: sin etiqueta visible, ícono flotando a la derecha */
+    .campo-pill { position: relative; }
+    .pill-input {
+        border-radius: 999px !important;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        color: #ffffff;
+        padding: 0.85rem 3rem 0.85rem 1.4rem;
+        font-size: 0.98rem;
+        transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .pill-input::placeholder { color: rgba(255, 255, 255, 0.65); }
+    .pill-input:focus {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.6);
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+    }
+    .pill-icon {
+        position: absolute;
+        right: 1.3rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 1.05rem;
+        pointer-events: none;
+    }
+    .pill-icon-clickable {
+        pointer-events: auto;
+        cursor: pointer;
+        transition: color var(--transition-fast);
+    }
+    .pill-icon-clickable:hover { color: #ffffff; }
+
+    .btn-login {
+        border-radius: 999px;
+        background: #ffffff;
+        color: var(--slate-900);
+        border: none;
+        padding: 0.8rem;
+        font-weight: 700;
+        font-size: 0.98rem;
+        letter-spacing: 0.02em;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+    }
+    .btn-login:hover {
+        background: #f1f5f9;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+        transform: translateY(-1px);
+        color: var(--slate-900);
+    }
+    .btn-login:active { transform: translateY(0); }
+</style>
+{% endblock %}
+
+{% block mensajes_flash %}{% endblock %}
+
+{% block contenido %}
+<div class="login-shell">
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <div class="login-logo-wrap">
+                <img src="{{ url_for('static', filename='img/login_img_blanco.png') }}" alt="INAMHI - Tiempo, Clima y Agua Ecuador" class="login-logo">
+            </div>
+            <h2 class="login-titulo-grande">Iniciar Sesión</h2>
+            <div class="login-subtitulo"><i class="bi bi-shield-check"></i> Sistema de Control de Activos</div>
+        </div>
+
+        {% with mensajes = get_flashed_messages(with_categories=true) %}
+            {% if mensajes %}
+                {% for categoria, mensaje in mensajes %}
+                    <div class="alert alert-{{ categoria }} alert-dismissible fade show py-2" role="alert">
+                        {{ mensaje }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login') }}" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3 campo-pill">
+                <input type="text" class="form-control pill-input" id="username" name="username"
+                       placeholder="Usuario" aria-label="Usuario" required autofocus>
+                <i class="bi bi-person-fill pill-icon"></i>
+            </div>
+            <div class="mb-4 campo-pill">
+                <input type="password" class="form-control pill-input" id="password" name="password"
+                       placeholder="Contraseña" aria-label="Contraseña" required>
+                <i class="bi bi-eye pill-icon pill-icon-clickable" id="toggle-password" role="button"
+                   aria-label="Mostrar contraseña" tabindex="0"></i>
+            </div>
+            <button type="submit" class="btn btn-login w-100">
+                <i class="bi bi-box-arrow-in-right"></i> Ingresar
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    function alternarPassword() {
+        const campo = document.getElementById('password');
+        const icono = document.getElementById('toggle-password');
+        if (campo.type === 'password') {
+            campo.type = 'text';
+            icono.classList.remove('bi-eye');
+            icono.classList.add('bi-eye-slash');
+        } else {
+            campo.type = 'password';
+            icono.classList.remove('bi-eye-slash');
+            icono.classList.add('bi-eye');
+        }
+    }
+    const iconoTogglePassword = document.getElementById('toggle-password');
+    iconoTogglePassword.addEventListener('click', alternarPassword);
+    iconoTogglePassword.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternarPassword(); }
+    });
+
+    const formLogin = document.querySelector('.login-card form');
+    formLogin.addEventListener('submit', function () {
+        const boton = formLogin.querySelector('button[type="submit"]');
+        boton.disabled = true;
+        boton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Ingresando...';
+    });
+</script>
+{% endblock %}

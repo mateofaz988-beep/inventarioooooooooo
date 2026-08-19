@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block titulo %}Inventario Previo | INAMHI{% endblock %}
+{% block contenido %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <h4 class="mb-0"><i class="bi bi-file-earmark-spreadsheet"></i> Inventario Previo (Staging)</h4>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('previo.plantilla') }}" class="btn btn-outline-primary">
+            <i class="bi bi-download"></i> Descargar plantilla
+        </a>
+        <a href="{{ url_for('previo.cargar') }}" class="btn btn-primary">
+            <i class="bi bi-upload"></i> Cargar Excel
+        </a>
+        {% if kpi_pendientes %}
+        <form method="POST" action="{{ url_for('previo.validar_todo') }}"
+              onsubmit="return confirm('¿Confirma marcar como verificadas TODAS las {{ kpi_pendientes }} filas pendientes? Úsalo solo si ya revisaste el resumen de la carga.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-success">
+                <i class="bi bi-check-all"></i> Verificar todas las pendientes ({{ kpi_pendientes }})
+            </button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{{ url_for('previo.migrar') }}"
+              onsubmit="return confirm('¿Confirma pasar las filas verificadas al Inventario General? Esta acción no se puede deshacer.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-arrow-right-circle"></i> Pasar al Inventario General
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card stat-card p-3" data-tono="slate">
+            <div class="stat-card-icon"><i class="bi bi-stack"></i></div>
+            <div>
+                <div class="stat-card-label">Total en staging</div>
+                <div class="stat-card-value">{{ kpi_total }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card p-3" data-tono="dorado">
+            <div class="stat-card-icon"><i class="bi bi-hourglass-split"></i></div>
+            <div>
+                <div class="stat-card-label">Pendientes de verificar</div>
+                <div class="stat-card-value">{{ kpi_pendientes }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card p-3" data-tono="verde">
+            <div class="stat-card-icon"><i class="bi bi-check-circle"></i></div>
+            <div>
+                <div class="stat-card-label">Verificadas</div>
+                <div class="stat-card-value">{{ kpi_verificados }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card p-3" data-tono="azul">
+            <div class="stat-card-icon"><i class="bi bi-upc-scan"></i></div>
+            <div>
+                <div class="stat-card-label">Con código provisional</div>
+                <div class="stat-card-value">{{ kpi_sin_codigo }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if resumen_carga %}
+<div class="alert alert-info">
+    <strong>Resumen de la última carga:</strong>
+    filas leídas: {{ resumen_carga.filas_leidas }},
+    nuevas: {{ resumen_carga.nuevas }},
+    actualizadas: {{ resumen_carga.actualizadas }},
+    sin código (provisional asignado): {{ resumen_carga.sin_codigo_provisional }},
+    omitidas (vacías): {{ resumen_carga.omitidas }}
+    {% if resumen_carga.detalles_omitidas %}
+        <ul class="small mb-0 mt-2">
+            {% for detalle in resumen_carga.detalles_omitidas %}<li>{{ detalle }}</li>{% endfor %}
+        </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if resumen_migracion %}
+<div class="alert alert-success">
+    <strong>Resumen de la última migración al inventario general:</strong>
+    insertados: {{ resumen_migracion.insertados }},
+    actualizados: {{ resumen_migracion.actualizados }},
+    omitidos: {{ resumen_migracion.omitidos }}
+    {% if resumen_migracion.detalles_omitidos %}
+        <ul class="small mb-0 mt-2">
+            {% for detalle in resumen_migracion.detalles_omitidos %}<li>{{ detalle }}</li>{% endfor %}
+        </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('previo.listar') }}" class="row g-2 align-items-center">
+            <div class="col-md-6">
+                <input type="text" class="form-control" name="q" value="{{ termino }}"
+                       placeholder="Buscar por código, bien, serie, marca, estado, bodega, ubicación, custodio o archivo...">
+            </div>
+            <div class="col-md-3">
+                <select name="verificado" class="form-select">
+                    <option value="" {% if not estado_filtro %}selected{% endif %}>Todas</option>
+                    <option value="pendientes" {% if estado_filtro == 'pendientes' %}selected{% endif %}>Pendientes</option>
+                    <option value="verificados" {% if estado_filtro == 'verificados' %}selected{% endif %}>Verificadas</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-secondary w-100"><i class="bi bi-search"></i> Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Código del Bien</th>
+                    <th>Bien</th>
+                    <th>Marca / Modelo</th>
+                    <th>Custodio Actual</th>
+                    <th>Ubicación de Bodega</th>
+                    <th>Estado Bien</th>
+                    <th>Fecha de Carga</th>
+                    <th>Verificado</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for fila in filas %}
+                    <tr>
+                        <td>
+                            {{ fila.codigo_bien }}
+                            {% if fila.codigo_generado %}
+                                <span class="badge" style="background-color:var(--accent);" title="Código provisional asignado por el sistema">provisional</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ fila.bien or '-' }}</td>
+                        <td class="small">{{ fila.marca_otros or '-' }} {% if fila.modelo_caracteristicas %}/ {{ fila.modelo_caracteristicas }}{% endif %}</td>
+                        <td>{{ fila.custodio_actual or '-' }}</td>
+                        <td>{{ fila.ubicacion_bodega or '-' }}</td>
+                        <td>{{ fila.estado_bien or '-' }}</td>
+                        <td class="text-nowrap">{{ fila.fecha_carga | hora_ec('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            {% if fila.verificado %}
+                                <span class="badge bg-success">Verificado</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Pendiente</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if not fila.verificado %}
+                            <form method="POST" action="{{ url_for('previo.validar', fila_id=fila.id) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-success">
+                                    <i class="bi bi-check-lg"></i> Validar
+                                </button>
+                            </form>
+                            {% else %}
+                                <span class="text-muted small">por {{ fila.usuario_verificador }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">No hay filas cargadas en el staging.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center bg-white">
+        <span class="text-muted small">Total: {{ total }} filas</span>
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if pagina <= 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('previo.listar', q=termino, verificado=estado_filtro, pagina=pagina-1) }}">Anterior</a>
+                </li>
+                <li class="page-item disabled"><span class="page-link">Página {{ pagina }} de {{ total_paginas }}</span></li>
+                <li class="page-item {% if pagina >= total_paginas %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('previo.listar', q=termino, verificado=estado_filtro, pagina=pagina+1) }}">Siguiente</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endblock %}

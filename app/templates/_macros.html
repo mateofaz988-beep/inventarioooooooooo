@@ -1,0 +1,55 @@
+{% macro campo_input(campo, valor, tecnicos, codigo_bloqueado=False, campos_bloqueados=[]) %}
+{% set solo_lectura = campo.attr in campos_bloqueados %}
+<div class="col-md-6 mb-3">
+    <label class="form-label" for="campo_{{ campo.attr }}">
+        {{ campo.label }}
+        {% if campo.requerido %}<span class="text-danger">*</span>{% endif %}
+        {% if solo_lectura %}
+            <i class="bi bi-lock-fill text-muted small ms-1" data-bs-toggle="tooltip" data-bs-container="body"
+               title="Solo el Administrador puede modificar este campo"></i>
+        {% endif %}
+    </label>
+    {% if campo.attr == 'custodio_actual' %}
+        {# Texto libre con sugerencias: el custodio real de un bien suele ser
+           un funcionario de la institución (nombre completo), no necesariamente
+           un usuario con acceso al sistema — un <select> estricto contra la
+           lista de usuarios perdía/ocultaba ese dato en los bienes importados. #}
+        <input type="text" class="form-control campo-form campo-autoajuste" id="campo_{{ campo.attr }}" name="{{ campo.attr }}"
+               value="{{ valor or '' }}" list="datalist_custodios" autocomplete="off"
+               {% if campo.requerido %}data-requerido="1"{% endif %} {% if solo_lectura %}readonly{% endif %}>
+        <datalist id="datalist_custodios">
+            {% for t in tecnicos %}
+                <option value="{{ t.username }}">{% if t.nombre_completo %}{{ t.nombre_completo }}{% endif %}</option>
+            {% endfor %}
+        </datalist>
+    {% elif campo.tipo == 'textarea' %}
+        <textarea class="form-control campo-form campo-autoaltura" id="campo_{{ campo.attr }}" name="{{ campo.attr }}" rows="1"
+                  {% if campo.requerido %}data-requerido="1"{% endif %} {% if solo_lectura %}readonly{% endif %}>{{ valor or '' }}</textarea>
+    {% elif campo.tipo == 'fecha' %}
+        <input type="date" class="form-control campo-form" id="campo_{{ campo.attr }}" name="{{ campo.attr }}"
+               value="{{ valor or '' }}" {% if campo.requerido %}data-requerido="1"{% endif %} {% if solo_lectura %}readonly{% endif %}>
+    {% elif campo.tipo == 'decimal' %}
+        <input type="number" step="0.01" class="form-control campo-form" id="campo_{{ campo.attr }}" name="{{ campo.attr }}"
+               value="{{ valor if valor is not none else '' }}" {% if campo.requerido %}data-requerido="1"{% endif %} {% if solo_lectura %}readonly{% endif %}>
+    {% elif campo.tipo == 'entero' %}
+        <input type="number" step="1" class="form-control campo-form" id="campo_{{ campo.attr }}" name="{{ campo.attr }}"
+               value="{{ valor if valor is not none else '' }}" {% if campo.requerido %}data-requerido="1"{% endif %} {% if solo_lectura %}readonly{% endif %}>
+    {% else %}
+        <input type="text" class="form-control campo-form campo-autoajuste" id="campo_{{ campo.attr }}" name="{{ campo.attr }}"
+               value="{{ valor or '' }}" {% if campo.requerido %}data-requerido="1"{% endif %}
+               {% if (campo.attr == 'codigo_bien' and codigo_bloqueado) or solo_lectura %}readonly{% endif %}>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro badge_estado(estado) %}
+    {% if estado == 'Aprobado' %}
+        <span class="badge badge-estado-aprobado">Aprobado</span>
+    {% elif estado == 'Observado' %}
+        <span class="badge badge-estado-observado">Observado</span>
+    {% elif estado == 'Borrador' %}
+        <span class="badge badge-estado-borrador">Borrador</span>
+    {% else %}
+        <span class="badge badge-estado-en-revision">En Revisión</span>
+    {% endif %}
+{% endmacro %}

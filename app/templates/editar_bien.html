@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+{% block titulo %}Editar {{ bien.codigo_bien }} | INAMHI{% endblock %}
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Editar Bien: {{ bien.codigo_bien }}</h4>
+    <a href="{{ url_for('inventario.listar') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver al Inventario
+    </a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between small mb-1">
+            <span class="fw-semibold text-body-secondary">Progreso de campos completados</span>
+            <span id="texto-progreso" class="fw-bold">0%</span>
+        </div>
+        <div class="progress" style="height: 10px; border-radius: 999px;">
+            <div class="progress-bar" id="barra-progreso" role="progressbar" style="width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-blue)); transition: width var(--transition);"></div>
+        </div>
+    </div>
+</div>
+
+{% if historial_custodio %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="mb-2"><i class="bi bi-arrow-left-right"></i> Historial de Traspasos de Custodio</h6>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                <tr><th>Fecha</th><th>Custodio Anterior</th><th>Custodio Nuevo</th><th>Modificado por</th></tr>
+                </thead>
+                <tbody>
+                {% for evento in historial_custodio %}
+                    <tr>
+                        <td class="text-nowrap small">{{ evento.fecha_traspaso | hora_ec('%Y-%m-%d %H:%M') }}</td>
+                        <td class="small">{{ evento.custodio_anterior or '-' }}</td>
+                        <td class="small">{{ evento.custodio_nuevo or '-' }}</td>
+                        <td class="small">{{ evento.usuario_modifica or '-' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" action="{{ url_for('editar.editar', codigo=bien.codigo_bien) }}" id="form-editar-bien" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="estado_revision" id="estado_revision" value="Borrador">
+
+    <div class="card">
+        <div class="card-body">
+            <ul class="nav nav-tabs" id="tabsEditar" role="tablist">
+                {% for tab_key, tab_label in tabs.items() %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {% if loop.first %}active{% endif %}"
+                            id="tab-editar-{{ tab_key }}-btn" data-bs-toggle="tab"
+                            data-bs-target="#tab-editar-{{ tab_key }}" type="button">
+                        {{ tab_label }}
+                    </button>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="tab-content border border-top-0 p-3">
+                {% for tab_key, tab_label in tabs.items() %}
+                <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-editar-{{ tab_key }}">
+                    <div class="row">
+                        {% for campo in campos if campo.tab == tab_key %}
+                            {{ macros.campo_input(campo, bien|attr(campo.attr), tecnicos, codigo_bloqueado=true, campos_bloqueados=campos_bloqueados) }}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="card-footer bg-white">
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="declaracion_correcta">
+                <label class="form-check-label" for="declaracion_correcta">
+                    Declaro que la información registrada es correcta y completa.
+                </label>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="btn-guardar-borrador">
+                    <i class="bi bi-file-earmark"></i> Guardar como Borrador
+                </button>
+                <button type="button" class="btn btn-primary" id="btn-enviar-revision" disabled>
+                    <i class="bi bi-send-check"></i> Enviar para Revisión
+                </button>
+            </div>
+            <small class="text-muted d-block mt-2">
+                Los campos marcados con <span class="text-danger">*</span> son obligatorios únicamente al
+                "Enviar para Revisión". Marca la casilla de declaración para habilitar el envío definitivo.
+            </small>
+        </div>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    const form = document.getElementById('form-editar-bien');
+    const estadoRevisionInput = document.getElementById('estado_revision');
+    const checkboxDeclaracion = document.getElementById('declaracion_correcta');
+    const btnEnviarRevision = document.getElementById('btn-enviar-revision');
+    const btnGuardarBorrador = document.getElementById('btn-guardar-borrador');
+    const campos = Array.from(document.querySelectorAll('.campo-form'));
+    const barraProgreso = document.getElementById('barra-progreso');
+    const textoProgreso = document.getElementById('texto-progreso');
+
+    function actualizarProgreso() {
+        const llenos = campos.filter(c => (c.value || '').trim() !== '').length;
+        const porcentaje = campos.length ? Math.round((llenos / campos.length) * 100) : 0;
+        barraProgreso.style.width = porcentaje + '%';
+        textoProgreso.textContent = porcentaje + '%';
+    }
+    campos.forEach(c => c.addEventListener('input', actualizarProgreso));
+    campos.forEach(c => c.addEventListener('change', actualizarProgreso));
+    actualizarProgreso();
+
+    checkboxDeclaracion.addEventListener('change', function () {
+        btnEnviarRevision.disabled = !this.checked;
+    });
+
+    function deshabilitarBotones() {
+        [btnGuardarBorrador, btnEnviarRevision].forEach(b => { b.disabled = true; });
+    }
+
+    btnGuardarBorrador.addEventListener('click', function () {
+        estadoRevisionInput.value = 'Borrador';
+        const textoOriginal = btnGuardarBorrador.innerHTML;
+        deshabilitarBotones();
+        btnGuardarBorrador.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Guardando...';
+        form.submit();
+    });
+
+    btnEnviarRevision.addEventListener('click', function () {
+        const requeridos = document.querySelectorAll('[data-requerido="1"]');
+        let faltantes = [];
+        requeridos.forEach(campo => {
+            if (!(campo.value || '').trim()) {
+                faltantes.push(campo.previousElementSibling ? campo.previousElementSibling.textContent.trim() : campo.name);
+                campo.classList.add('is-invalid');
+            } else {
+                campo.classList.remove('is-invalid');
+            }
+        });
+        if (faltantes.length > 0) {
+            alert('Faltan campos obligatorios:\n- ' + faltantes.join('\n- '));
+            return;
+        }
+        estadoRevisionInput.value = 'En Revisión';
+        deshabilitarBotones();
+        btnEnviarRevision.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Enviando...';
+        form.submit();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,273 @@
+-- =====================================================================
+-- INAMHI | Sistema de Control de Activos - Script de RECUPERACIÓN
+-- Motor: MySQL 8.x
+-- =====================================================================
+-- Este script recrea la base de datos completa desde cero: la base, las
+-- 4 tablas del sistema (usuarios, inventario, inventario_previo,
+-- bitacora_auditoria) con sus índices, y el usuario Administrador inicial
+-- para poder volver a iniciar sesión.
+--
+-- Se generó comparando columna por columna contra los modelos reales de
+-- la app (app/models/*.py), así que coincide exactamente con lo que el
+-- backend espera. Es el mismo contenido que sql/schema.sql en la raíz del
+-- proyecto (ese archivo alimenta al backend); este .txt es una copia para
+-- que la puedas abrir y ejecutar directamente en MySQL Workbench. Si en el
+-- futuro cambian los modelos, actualiza los dos archivos juntos.
+--
+-- CÓMO EJECUTARLO (MySQL Workbench):
+--   1. Abre una conexión a tu servidor MySQL (el mismo host/puerto que
+--      tengas en tu archivo .env: DB_HOST, DB_PORT).
+--   2. Abre este archivo como una nueva pestaña de SQL (File > Open SQL
+--      Script) o simplemente pega todo su contenido.
+--   3. Ejecuta todo el script (el rayo amarillo / Ctrl+Shift+Enter).
+--   4. Verifica que tu archivo .env (basado en .env.example) tenga
+--      DB_NAME=inamhi_inventario y las credenciales del usuario que vaya
+--      a usar la app (ver el bloque opcional de usuario/permisos más abajo).
+--   5. Inicia la app (`python run.py` o como la ejecutes normalmente) y
+--      entra con: usuario "admin", contraseña "Inamhi2026*" (cámbiala
+--      apenas entres, desde Gestión de Usuarios -> Cambiar contraseña).
+-- =====================================================================
+
+CREATE DATABASE IF NOT EXISTS `inamhi_inventario`
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
+USE `inamhi_inventario`;
+
+-- ---------------------------------------------------------------------
+-- Tabla: usuarios
+-- El rol es texto libre (VARCHAR), validado en la app, no en la base de
+-- datos: los roles vigentes son 'Administrador', 'Editor' (mismo acceso
+-- que Administrador salvo eliminar registros) y 'Tecnico Levantamiento'.
+-- No hace falta ningún cambio de esquema para soportar el rol Editor.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `usuarios` (
+    `id`               INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+    `username`         VARCHAR(80)     NOT NULL,
+    `password_hash`    VARCHAR(255)    NOT NULL,
+    `rol`              VARCHAR(50)     NOT NULL DEFAULT 'Tecnico Levantamiento',
+    `nombre_completo`  VARCHAR(150)    NULL,
+    `email`            VARCHAR(150)    NULL,
+    `activo`           TINYINT(1)      NOT NULL DEFAULT 1,
+    `fecha_creacion`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_usuarios_username` (`username`),
+    KEY `ix_usuarios_rol` (`rol`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Tabla: inventario
+-- Nombres de columna EXACTOS en español (con tildes/paréntesis), tal
+-- como los usa la institución. No traducir ni renombrar: el modelo
+-- SQLAlchemy (app/models/inventario.py) mapea cada atributo Python a
+-- exactamente estos nombres de columna.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `inventario` (
+    `id`                              INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+
+    -- Identificación
+    `Código del Bien`                 VARCHAR(255)    NOT NULL,
+    `Código Anterior`                 VARCHAR(255)    NULL,
+    `Identificador`                   VARCHAR(255)    NULL,
+    `Nro de Acta/ Nro de Matriz`      VARCHAR(255)    NULL,
+    `(BLD) o (BCA)`                   VARCHAR(255)    NULL,
+    `Bien`                            VARCHAR(255)    NULL,
+    `Serie/ Identificación`           VARCHAR(255)    NULL,
+    `Modelo/ Características`        TEXT            NULL,
+    `Marca/ Otros`                    VARCHAR(255)    NULL,
+    `Crítico`                         VARCHAR(255)    NULL,
+    `Descripción`                     TEXT            NULL,
+
+    -- Valoración
+    `Moneda`                          VARCHAR(255)    NULL,
+    `Valor de Compra`                 DECIMAL(14,2)   NULL,
+    `Recompra`                        VARCHAR(255)    NULL,
+    `Valor Contable`                  DECIMAL(14,2)   NULL,
+    `Valor Residual`                  DECIMAL(14,2)   NULL,
+    `Valor en Libros`                 DECIMAL(14,2)   NULL,
+    `Valor Depreciación Acumulada`    DECIMAL(14,2)   NULL,
+    `Cuenta Contable`                 VARCHAR(255)    NULL,
+    `Depreciable`                     VARCHAR(255)    NULL,
+    `Vida Útil`                       INT             NULL,
+    `Fecha Última Depreciación`       DATE            NULL,
+    `Fecha Término Depreciación`      DATE            NULL,
+
+    -- Características y condición
+    `Color`                           VARCHAR(255)    NULL,
+    `Material`                        VARCHAR(255)    NULL,
+    `Dimensiones`                     TEXT            NULL,
+    `Condición del Bien`              VARCHAR(255)    NULL,
+    `Habilitado`                      VARCHAR(255)    NULL,
+    `Estado Bien`                     VARCHAR(255)    NULL,
+    `Comodato`                        VARCHAR(255)    NULL,
+    `Item/ Renglón`                   VARCHAR(255)    NULL,
+
+    -- Ubicación, custodia y actas
+    `Id Bodega`                       VARCHAR(255)    NULL,
+    `Bodega`                          VARCHAR(255)    NULL,
+    `Id Ubicación`                    VARCHAR(255)    NULL,
+    `Ubicación de Bodega`             VARCHAR(255)    NULL,
+    `Nro de Cédula/ RUC`              VARCHAR(255)    NULL,
+    `Custodio Actual`                 VARCHAR(255)    NULL,
+    `Custodio Activo`                 VARCHAR(255)    NULL,
+    `Origen del Ingreso`              VARCHAR(255)    NULL,
+    `Tipo de Ingreso`                 VARCHAR(255)    NULL,
+    `Nro de Compromiso`               VARCHAR(255)    NULL,
+    `Estado del Acta`                 VARCHAR(255)    NULL,
+    `Contabilizado del Acta`          VARCHAR(255)    NULL,
+    `Contabilizado del Bien`          VARCHAR(255)    NULL,
+    `Fecha de Creación`               DATE            NULL,
+    `Fecha de Ingreso`                DATE            NULL,
+
+    -- Flujo de trabajo (control interno, no proviene del Excel)
+    `Usuario Registro`                VARCHAR(80)     NULL,
+    `estado`                          VARCHAR(50)     NOT NULL DEFAULT 'En Revisión',
+    `observaciones_tic`               TEXT            NULL,
+    `fecha_revision_tic`              DATETIME        NULL,
+    `revisado_por_tic`                VARCHAR(80)     NULL,
+
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_inventario_codigo_bien` (`Código del Bien`),
+    KEY `ix_inventario_bien` (`Bien`),
+    KEY `ix_inventario_estado_bien` (`Estado Bien`),
+    KEY `ix_inventario_custodio_actual` (`Custodio Actual`),
+    KEY `ix_inventario_usuario_registro` (`Usuario Registro`),
+    KEY `ix_inventario_estado` (`estado`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Tabla: inventario_previo (staging de cargas Excel)
+-- Tiene una columna por cada campo oficial de `inventario` (mismos nombres
+-- de atributo Python, en snake_case aquí ya que es una tabla de control
+-- interno, no la tabla "oficial"), para no perder información rica del
+-- Excel entre la carga y la migración/fusión hacia el inventario oficial.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `inventario_previo` (
+    `id`                              INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+    `codigo_bien`                     VARCHAR(255)    NOT NULL,
+    `codigo_generado`                 TINYINT(1)      NOT NULL DEFAULT 0,
+
+    `codigo_anterior`                 VARCHAR(255)    NULL,
+    `identificador`                   VARCHAR(255)    NULL,
+    `nro_acta_matriz`                 VARCHAR(255)    NULL,
+    `bld_o_bca`                       VARCHAR(255)    NULL,
+    `bien`                            VARCHAR(255)    NULL,
+    `serie_identificacion`            VARCHAR(255)    NULL,
+    `modelo_caracteristicas`          TEXT            NULL,
+    `marca_otros`                     VARCHAR(255)    NULL,
+    `critico`                         VARCHAR(255)    NULL,
+    `descripcion`                     TEXT            NULL,
+
+    `moneda`                          VARCHAR(255)    NULL,
+    `valor_compra`                    DECIMAL(14,2)   NULL,
+    `recompra`                        VARCHAR(255)    NULL,
+    `valor_contable`                  DECIMAL(14,2)   NULL,
+    `valor_residual`                  DECIMAL(14,2)   NULL,
+    `valor_en_libros`                 DECIMAL(14,2)   NULL,
+    `valor_depreciacion_acumulada`    DECIMAL(14,2)   NULL,
+    `cuenta_contable`                 VARCHAR(255)    NULL,
+    `depreciable`                     VARCHAR(255)    NULL,
+    `vida_util`                       INT             NULL,
+    `fecha_ultima_depreciacion`       DATE            NULL,
+    `fecha_termino_depreciacion`      DATE            NULL,
+
+    `color`                           VARCHAR(255)    NULL,
+    `material`                        VARCHAR(255)    NULL,
+    `dimensiones`                     TEXT            NULL,
+    `condicion_bien`                  VARCHAR(255)    NULL,
+    `habilitado`                      VARCHAR(255)    NULL,
+    `estado_bien`                     VARCHAR(255)    NULL,
+    `comodato`                        VARCHAR(255)    NULL,
+    `item_renglon`                    VARCHAR(255)    NULL,
+
+    `id_bodega`                       VARCHAR(255)    NULL,
+    `bodega`                          VARCHAR(255)    NULL,
+    `id_ubicacion`                    VARCHAR(255)    NULL,
+    `ubicacion_bodega`                VARCHAR(255)    NULL,
+    `nro_cedula_ruc`                  VARCHAR(255)    NULL,
+    `custodio_actual`                 VARCHAR(255)    NULL,
+    `custodio_activo`                 VARCHAR(255)    NULL,
+    `origen_ingreso`                  VARCHAR(255)    NULL,
+    `tipo_ingreso`                    VARCHAR(255)    NULL,
+    `nro_compromiso`                  VARCHAR(255)    NULL,
+    `estado_acta`                     VARCHAR(255)    NULL,
+    `contabilizado_acta`              VARCHAR(255)    NULL,
+    `contabilizado_bien`              VARCHAR(255)    NULL,
+    `fecha_creacion`                  DATE            NULL,
+    `fecha_ingreso`                   DATE            NULL,
+
+    `observaciones_carga`             TEXT            NULL,
+    `nombre_archivo_origen`           VARCHAR(255)    NULL,
+    `fecha_carga`                     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `verificado`                      TINYINT(1)      NOT NULL DEFAULT 0,
+    `usuario_verificador`             VARCHAR(80)     NULL,
+
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_inventario_previo_codigo` (`codigo_bien`),
+    KEY `ix_inventario_previo_verificado` (`verificado`),
+    KEY `ix_inventario_previo_bien` (`bien`),
+    KEY `ix_inventario_previo_estado_bien` (`estado_bien`),
+    KEY `ix_inventario_previo_ubicacion` (`ubicacion_bodega`),
+    KEY `ix_inventario_previo_custodio` (`custodio_actual`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Tabla: bitacora_auditoria
+-- Sin FK hacia inventario/usuarios a propósito: son snapshots de texto
+-- histórico y el sistema audita después de eliminar un bien o puede
+-- referenciar usuarios ya eliminados.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `bitacora_auditoria` (
+    `id`            INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+    `codigo_bien`   VARCHAR(255)    NULL,
+    `usuario`       VARCHAR(80)     NULL,
+    `accion`        VARCHAR(100)    NOT NULL,
+    `detalle`       TEXT            NULL,
+    `fecha`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `ix_bitacora_codigo_bien` (`codigo_bien`),
+    KEY `ix_bitacora_usuario` (`usuario`),
+    KEY `ix_bitacora_accion` (`accion`),
+    KEY `ix_bitacora_fecha` (`fecha`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Usuario administrador inicial (para poder volver a entrar al sistema)
+-- Usuario:    admin
+-- Contraseña: Inamhi2026*   (CÁMBIALA apenas entres, desde Gestión de
+--             Usuarios -> Cambiar contraseña)
+-- El hash de abajo fue generado con bcrypt (12 rondas) y quedó verificado
+-- contra esa contraseña exacta antes de entregarte este script; es
+-- compatible con Flask-Bcrypt (usado tanto por el login de páginas como
+-- por /api/auth/login).
+-- ON DUPLICATE KEY UPDATE hace que sea seguro volver a correr el script
+-- sin duplicar ni romper el usuario admin si ya existiera.
+-- ---------------------------------------------------------------------
+INSERT INTO `usuarios` (`username`, `password_hash`, `rol`, `nombre_completo`, `email`, `activo`)
+VALUES (
+    'admin',
+    '$2b$12$riNACU6F.l3Hs7bWZpzZkuF/H2BINskJEF7tc4kGNtUfcgnZ.oxQi',
+    'Administrador',
+    'Administrador del Sistema',
+    'admin@inamhi.gob.ec',
+    1
+)
+ON DUPLICATE KEY UPDATE `username` = `username`;
+
+-- =====================================================================
+-- Usuario de MySQL para que Flask se conecte a la base (DB_USER/DB_PASSWORD
+-- en tu .env). Esto es DISTINTO del usuario "admin" de la aplicación
+-- (tabla `usuarios` de arriba, para entrar a la página web).
+--
+-- ALTER USER fuerza esta contraseña sin importar si la cuenta 'inamhi_app'
+-- ya existía de antes con otra contraseña (DROP DATABASE no borra
+-- usuarios de MySQL, así que podía seguir existiendo con una contraseña
+-- vieja que ya no conoces) — por eso no basta con CREATE USER solo.
+--
+-- Ejecuta este bloque conectado como root (o cualquier usuario con
+-- privilegios de administración) en MySQL Workbench.
+-- =====================================================================
+CREATE USER IF NOT EXISTS 'inamhi_app'@'localhost' IDENTIFIED BY 'lmYspTT3PjiPBG7k0xK2IGuD';
+ALTER USER 'inamhi_app'@'localhost' IDENTIFIED BY 'lmYspTT3PjiPBG7k0xK2IGuD';
+GRANT ALL PRIVILEGES ON `inamhi_inventario`.* TO 'inamhi_app'@'localhost';
+FLUSH PRIVILEGES;
